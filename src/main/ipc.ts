@@ -44,8 +44,9 @@ import {
   setFragmentFolderColor,
   updateFragment
 } from './fragments/repo'
-import { processWildcards, resetSequentialCounters } from './fragments/processor'
-import { removeComments } from '../shared/nai-presets'
+import { resetSequentialCounters } from './fragments/processor'
+import { previewTexts } from './fragments/request'
+import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
   deleteNaiAccount,
@@ -548,6 +549,23 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   handle('frags:resetSequential', () => {
     resetSequentialCounters()
   })
+  handle('fragmentWorkbook:get', () => workbookStatus())
+  handle('fragmentWorkbook:pick', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: t('ui.chooseFragmentWorkbook'),
+      properties: ['openFile'],
+      filters: [{ name: t('ui.excelWorkbook'), extensions: ['xlsx', 'xlsm'] }]
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      setSetting(WORKBOOK_SETTING, result.filePaths[0])
+    }
+    return workbookStatus()
+  })
+  handle('fragmentWorkbook:clear', () => {
+    setSetting(WORKBOOK_SETTING, '')
+    return workbookStatus()
+  })
   handle('frags:reorder', ({ order }) => {
     reorderFragments(order)
   })
@@ -569,10 +587,8 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   handle('tokens:count', async ({ texts, model }) => {
     // 토큰 수는 실제 전송본 기준 — 조각(<이름>)·주석을 치환/제거한 결과로 센다.
     // rng 고정(항상 첫 줄)이라 결정적이고, peek이라 <*이름> 순차 카운터를 소모하지 않는다.
-    const src = fragmentSource()
-    const processed = texts.map((text) =>
-      processWildcards(removeComments(text), src, () => 0, true)
-    )
+    // 변수($Name = ...)는 한 프롬프트로 간주해 필드 간에 공유한다. 미리보기라 오류는 던지지 않는다.
+    const processed = previewTexts(texts, fragmentSource(), await refreshWorkbook())
     return {
       counts: await countPromptTokens(processed, model)
     }

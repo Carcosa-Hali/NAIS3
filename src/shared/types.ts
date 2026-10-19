@@ -381,6 +381,16 @@ export interface LibraryStack {
 }
 
 /** IPC invoke 채널 계약: 채널명 → (요청, 응답) */
+/** 외부 조각 워크북(.xlsx) 상태 — 설정 화면 표시용 */
+export interface FragmentWorkbookInfo {
+  /** 선택된 파일 경로, 없으면 null */
+  path: string | null
+  /** 읽어 들인 시트 수 */
+  sheetCount: number
+  /** 마지막 읽기 오류 (정상이면 null). 오류여도 직전 성공본은 계속 사용된다 */
+  error: string | null
+}
+
 export interface IpcInvokeMap {
   'db:status': { req: void; res: { version: number; path: string } }
   /** 앱 버전 */
@@ -482,6 +492,10 @@ export interface IpcInvokeMap {
   'frags:exportAll': { req: void; res: { count: number } }
   /** 순차 선택(<*이름>) 카운터 전체 리셋 — 다시 처음 줄부터 (NAIS2 기능) */
   'frags:resetSequential': { req: void; res: void }
+  /** 외부 조각 워크북(.xlsx): 상태 조회 / 파일 선택 / 해제. 생성 때마다 최신 내용을 다시 읽는다 */
+  'fragmentWorkbook:get': { req: void; res: FragmentWorkbookInfo }
+  'fragmentWorkbook:pick': { req: void; res: FragmentWorkbookInfo }
+  'fragmentWorkbook:clear': { req: void; res: FragmentWorkbookInfo }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
   'frags:folderCreate': { req: { name: string }; res: { id: number } }
   'frags:folderRename': { req: { id: number; name: string }; res: void }

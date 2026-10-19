@@ -7,6 +7,7 @@ import icon from '../../resources/icon.png?asset'
 import { closeDb, initDb } from './db'
 import { getSetting } from './db/settings'
 import { preprocessRequest } from './fragments/request'
+import { refreshWorkbook } from './fragments/workbook'
 import { inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
 import { snapNaiResolution } from '../shared/nai-resolution'
 import { fragmentSource } from './fragments/repo'
@@ -167,7 +168,10 @@ app.whenReady().then(() => {
     // 배치 항목마다 여기서 치환 — 매 장 다른 와일드카드 결과가 나온다.
     // 주석 제거가 반드시 먼저 — 주석 줄이 조각을 소모하거나(순차 카운터),
     // 와일드카드 처리의 재조립이 개행을 지워 주석 범위가 전체로 번지는 것 방지 (NAIS2와 동일 순서)
-    let request = preprocessRequest(rawRequest, fragmentSource())
+    // 외부 워크북(<시트/키>)은 장마다 최신 파일을 반영 (수정 시각이 바뀐 경우에만 다시 읽음)
+    let request = preprocessRequest(rawRequest, fragmentSource(), {
+      sheets: await refreshWorkbook()
+    })
 
     // 바이브/캐릭레퍼 준비 — 요청이 id를 지정하면(출연 예약) 그것으로, 아니면 DB enabled 항목
     // (바이브는 필요 시 인코딩 — 2 Anlas, 캐시됨)

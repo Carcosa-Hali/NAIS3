@@ -1,7 +1,6 @@
 import type { NaisApi } from '../../../preload/index'
-import { preprocessRequest } from '../../../main/fragments/request'
-import { processWildcards, resetSequentialCounters } from '../../../main/fragments/processor'
-import { removeComments } from '@shared/nai-presets'
+import { preprocessRequest, previewTexts } from '../../../main/fragments/request'
+import { resetSequentialCounters } from '../../../main/fragments/processor'
 import { modelCapabilities } from '@shared/nai-models'
 import { applyRandomCharacterPrompt } from '@shared/random-character'
 import { UPSCALE_MODEL, UPSCALE_SCALE } from '../../../main/nai/upscale-request'
@@ -691,9 +690,7 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
     const source = browserFragmentSource(await readBrowserState())
     return gateway('tokens', {
       ...request,
-      texts: (request.texts as string[]).map((text) =>
-        processWildcards(removeComments(text), source, () => 0, true)
-      )
+      texts: previewTexts(request.texts as string[], source)
     })
   }
 
@@ -837,6 +834,8 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel.startsWith('promptPresets:')) return promptPresetsDispatch(channel, request)
   if (channel.startsWith('library:')) return libraryDispatch(channel, request)
 
+  // 외부 워크북(.xlsx)은 파일 시스템이 필요해 Electron 전용
+  if (channel.startsWith('fragmentWorkbook:')) return { path: null, sheetCount: 0, error: null }
   if (channel === 'settings:getSaveDir') return { dir: 'Browser downloads', isDefault: true }
   if (channel === 'settings:pickSaveDir') return { dir: null }
   if (channel === 'settings:resetSaveDir') return { dir: 'Browser downloads' }
