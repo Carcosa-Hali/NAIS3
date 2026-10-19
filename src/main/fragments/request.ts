@@ -3,8 +3,9 @@ import { removeComments } from '../../shared/nai-presets'
 import { processWildcards, type FragmentSource } from './processor'
 import { composeFragmentSources, type SpreadsheetSource } from './spreadsheet'
 import {
+  BlockStore,
   extractVariableDefinitions,
-  resolveVariableBlocks,
+  PromptVariableError,
   rollVariables,
   type VariableDefinition
 } from './variables'
@@ -44,31 +45,68 @@ function mapRequestTexts(
 }
 
 /**
- * Fragment lines (saved fragments and spreadsheet cells) may themselves contain `${Var: ...}` blocks, for
- * example a "selector" fragment that holds the whole case list. Blocks are resolved on each line as it is
- * looked up, before that line is expanded, so they work at any nesting depth.
+ * Two-step substitution shared by generation and the token preview.
+ *
+ *   collect(text) for every prompt text: strip comments, set `${...}` blocks aside, collect `$Var = ...`
+ *   definitions, expand `<fragments>` / `<Sheet/Key>` / wildcards. Fragment lines and sheet cells are treated like
+ *   prompt text: only the line (cell) that was actually picked contributes its definitions and blocks.
+ *   roll()        roll every collected definition once.
+ *   finish(text)  for every prompt text: resolve the set-aside blocks (their chosen branch is expanded, which may bring
+ *                 in more fragment lines containing blocks).
+ *
+ * Blocks therefore see definitions from anywhere in the request, in any order, including from fragments and cells.
  */
-function withVariableBlocks(
-  source: FragmentSource,
-  values: ReadonlyMap<string, string>,
-  strict: boolean
-): FragmentSource {
-  return {
-    getLines: (path) => {
-      const lines = source.getLines(path)
-      return lines ? lines.map((line) => resolveVariableBlocks(line, values, strict)) : lines
+function createPipeline(
+  fragments: FragmentSource,
+  rng: () => number,
+  strict: boolean,
+  peek: boolean
+): {
+  collect: (text: string) => string
+  roll: () => void
+  finish: (text: string) => string
+} {
+  const store = new BlockStore()
+  const definitions: VariableDefinition[] = []
+  let values: ReadonlyMap<string, string> | null = null
+
+  const hold = (text: string): string =>
+    extractVariableDefinitions(store.mask(text, strict), definitions)
+
+  const expanding: FragmentSource = {
+    getLines: (path) => fragments.getLines(path),
+    select: (line) => {
+      const known = definitions.length
+      const kept = hold(line)
+      if (values !== null && definitions.length > known) {
+        // Variables are already rolled, so a definition that only turns up inside a chosen variable branch is too late.
+        definitions.length = known
+        if (strict) {
+          throw new PromptVariableError(
+            'A "$name = ..." definition inside a ${...} branch cannot be used. Put it in the prompt, or in a fragment/cell used outside ${...} blocks.'
+          )
+        }
+      }
+      return kept
     }
+  }
+
+  return {
+    collect: (text) => processWildcards(hold(removeComments(text)), expanding, rng, peek),
+    roll: () => {
+      values = rollVariables(definitions, { source: fragments, rng, strict })
+    },
+    finish: (text) =>
+      store.resolve(text, values ?? new Map(), strict, (branch) =>
+        processWildcards(branch, expanding, rng, peek)
+      )
   }
 }
 
 /**
  * Process each queued image once; split metadata and the transmitted prompt share the result.
  *
- * Order: strip comments -> collect `$Var = ...` definitions from every field and roll them once ->
- * resolve `${Var: ...}` blocks in every field, and in every fragment line as it is expanded ->
- * expand `<fragments>` / `<Sheet/Key>` / wildcards.
  * Comments go first so a commented-out line can neither define a variable nor consume a fragment.
- *
  * Throws (so the queue item fails with a readable message instead of spending Anlas on a broken prompt)
  * when a variable is undefined or a known sheet has no such key.
  */
@@ -79,17 +117,11 @@ export function preprocessRequest(
 ): GenerationRequest {
   const rng = options.rng ?? Math.random
   const fragments = composeFragmentSources(source, options.sheets, { strict: true })
+  const pipeline = createPipeline(fragments, rng, true, false)
 
-  const definitions: VariableDefinition[] = []
-  const stripped = mapRequestTexts(request, (text) =>
-    extractVariableDefinitions(removeComments(text), definitions)
-  )
-  const values = rollVariables(definitions, { source: fragments, rng, strict: true })
-  const expanding = withVariableBlocks(fragments, values, true)
-
-  return mapRequestTexts(stripped, (text) =>
-    processWildcards(resolveVariableBlocks(text, values, true), expanding, rng)
-  )
+  const collected = mapRequestTexts(request, pipeline.collect)
+  pipeline.roll()
+  return mapRequestTexts(collected, pipeline.finish)
 }
 
 /**
@@ -102,15 +134,10 @@ export function previewTexts(
   source: FragmentSource,
   sheets?: SpreadsheetSource | null
 ): string[] {
-  const rng = (): number => 0
   const fragments = composeFragmentSources(source, sheets, { strict: false })
-  const definitions: VariableDefinition[] = []
-  const stripped = texts.map((text) =>
-    extractVariableDefinitions(removeComments(text), definitions)
-  )
-  const values = rollVariables(definitions, { source: fragments, rng, strict: false })
-  const expanding = withVariableBlocks(fragments, values, false)
-  return stripped.map((text) =>
-    processWildcards(resolveVariableBlocks(text, values, false), expanding, rng, true)
-  )
+  const pipeline = createPipeline(fragments, () => 0, false, true)
+
+  const collected = texts.map(pipeline.collect)
+  pipeline.roll()
+  return collected.map(pipeline.finish)
 }

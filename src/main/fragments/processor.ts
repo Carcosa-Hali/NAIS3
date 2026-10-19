@@ -16,6 +16,11 @@ import { normalizeFragmentPath } from '../../shared/fragment-path'
 export interface FragmentSource {
   /** path("폴더/이름" 또는 "이름")로 조각 줄 목록 조회. 없으면 null */
   getLines: (path: string) => string[] | null
+  /**
+   * Optional hook applied to the line that was actually picked (not to every candidate line), before that line
+   * is expanded further. Used to collect `$Var = ...` definitions from the chosen fragment line / sheet cell.
+   */
+  select?: (line: string) => string
 }
 
 const MAX_DEPTH = 10
@@ -65,6 +70,8 @@ function processFileWildcards(
     } else {
       line = lines[Math.floor(rng() * lines.length)]
     }
+
+    if (source.select) line = source.select(line)
 
     // 선택된 줄 안의 중첩 조각 재귀 치환
     return processFileWildcards(line, source, rng, depth + 1, peek)

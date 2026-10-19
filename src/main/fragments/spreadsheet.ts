@@ -48,9 +48,18 @@ function isComment(text: string): boolean {
   return text.trimStart().startsWith('#')
 }
 
-/** A cell with line breaks (Alt+Enter) becomes one candidate with comma-separated tags. */
+/**
+ * A cell keeps its line breaks (Alt+Enter), so one cell can hold several prompt lines, including
+ * `$Var = ...` definition lines. Lines starting with # inside a cell are comments and are dropped,
+ * and trailing spaces are trimmed.
+ */
 function cleanCell(text: string): string {
-  return text.replace(/\s*[\r\n]+\s*/g, ', ').trim()
+  return text
+    .split(/\r\n|\r|\n/)
+    .filter((line) => !isComment(line))
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim()
 }
 
 export function createSpreadsheetSource(sheets: ParsedSheet[]): SpreadsheetSource {
@@ -66,7 +75,7 @@ export function createSpreadsheetSource(sheets: ParsedSheet[]): SpreadsheetSourc
     for (const row of sheet.rows) {
       const key = row.key.trim()
       const value = cleanCell(row.value)
-      if (!key || !value || isComment(key) || isComment(value)) continue
+      if (!key || !value || isComment(key) || isComment(row.value)) continue
       const normalizedKey = normalizeName(key)
       const bucket = entry.keys.get(normalizedKey) ?? { label: key, values: [] }
       bucket.values.push(value)

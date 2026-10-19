@@ -166,9 +166,10 @@ describe('createSpreadsheetSource', () => {
   ])
 
   it('collects the column-B value of every row sharing a key, case-insensitively', () => {
+    // line breaks inside a cell are kept
     expect(source.getOptions('locations', 'PUBLIC LOCATIONS')).toEqual([
       'street, crowd',
-      'train station, platform'
+      'train station\nplatform'
     ])
   })
 

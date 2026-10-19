@@ -13,7 +13,10 @@ Settings → Storage → **Spreadsheet fragments (.xlsx)** selects one workbook 
 - `<*Sheet/Key>` walks the rows in order, like `<*fragment>`.
 - Sheet and key names ignore case and extra / full-width spaces.
 - A cell may contain other references such as `<wedding_dress_types>` or `<Other/Key>`.
-- A row whose column A or B starts with `#` is ignored. A line break inside a cell becomes `, `.
+- **A cell keeps its line breaks** (Alt+Enter in Excel), so one cell can hold several prompt lines, including
+  `$Name = ...` definition lines and `${...}` blocks.
+- A row whose column A or B starts with `#` is ignored. Inside a cell, a line starting with `#` is a comment
+  and is dropped; trailing spaces on each line are trimmed.
 - The file is re-read at every generation when its modification time or size changed, so edit and save in
   Excel and the next image uses the new content. Excel writes to disk only on save. If a re-read fails (for
   example mid-save) the last good copy is used.
@@ -23,15 +26,26 @@ Settings → Storage → **Spreadsheet fragments (.xlsx)** selects one workbook 
 
 ## Shared variables (`$Name`, `${Name: ...}`)
 
-Define once, in any prompt field:
+Define once, on a line of its own:
 
 ```
 $Location = random(WEDDING, PARTY, PERFORMANCE)
-$Location = random(<Events/Venues>)          # pool from a sheet (or a saved fragment)
+$Location = random(<Events/Venues>)
 ```
 
-The value is rolled once per image and is identical in every field. Definition lines are removed before the
-prompt is sent. Use it with:
+(`random(<Events/Venues>)` takes its pool from every row of that key. Put no comment after a definition on the
+same line: a `#` comment must be a whole line.)
+
+The value is rolled once per image and is identical everywhere. Definition lines are removed before the prompt
+is sent. A definition can be written in any prompt field, **or inside a fragment or a spreadsheet cell**: only
+the fragment line or cell that was actually picked counts. For example, a cell
+
+```
+indoors, strip club, runway stage, spotlight
+$outfits = lingerie
+```
+
+used as `<Scenes/strip club>` in the main prompt sets `outfits` for every character prompt too. Use a variable with:
 
 ```
 ${Location}                                                       the rolled value
@@ -43,12 +57,18 @@ ${Location: WEDDING, PARTY => festive}                             several label
   block produces nothing (and stray commas are cleaned up).
 - Branch text can contain fragments, `<Sheet/Key>`, inline `<a|b>` wildcards, emphasis brackets and nested
   `${...}` blocks.
+- A `${...}` block can itself sit inside a saved fragment (one line) or a spreadsheet cell.
 - Names and labels ignore case. An undefined variable or a malformed block fails that image with a message.
+- A variable defined twice (for example once in the prompt and once in a picked cell) fails that image with a
+  message. A definition that only appears inside a chosen `${...}` branch is too late to be used and fails too.
 - Token counts use each variable's first option and never fail.
 
 ## Processing order
 
 1. Comment lines (`#`) are removed.
-2. `$Name = ...` lines are collected from all fields and rolled once.
-3. `${...}` blocks are resolved in every field.
-4. `<fragments>`, `<Sheet/Key>` and the existing wildcard syntaxes are expanded.
+2. `${...}` blocks are set aside. `$Name = ...` lines are collected from every prompt field, and from every
+   fragment line / cell that gets picked while `<fragments>`, `<Sheet/Key>` and the existing wildcard syntaxes are
+   expanded.
+3. Every collected definition is rolled once.
+4. The set-aside blocks are resolved, in any field, in any order. The chosen branch is expanded like normal prompt
+   text.

@@ -159,7 +159,7 @@ function findBlockEnd(text: string, open: number): number {
 }
 
 /** Blocks that resolve to nothing leave stray commas ("a, , b"); clean those lines up. */
-function tidyCommas(text: string): string {
+export function tidyCommas(text: string): string {
   return text
     .split('\n')
     .map((line) =>
@@ -170,6 +170,70 @@ function tidyCommas(text: string): string {
     )
     .join('\n')
 }
+
+/**
+ * Holds `${...}` blocks that were set aside while fragments were expanded. A block is replaced in the text by a
+ * placeholder made of two private-use characters, so fragment expansion never touches (or half-expands) its
+ * branches; the chosen branch is expanded later, once every `$Var = ...` definition in the request is known.
+ */
+export class BlockStore {
+  private readonly blocks: string[] = []
+
+  /** Replaces each top-level `${...}` block with a placeholder. An unclosed block is an error (strict) or left as text. */
+  mask(text: string, strict: boolean): string {
+    if (!text.includes('${')) return text
+    let out = ''
+    let cursor = 0
+    while (cursor < text.length) {
+      const start = text.indexOf('${', cursor)
+      if (start < 0) {
+        out += text.slice(cursor)
+        break
+      }
+      out += text.slice(cursor, start)
+      const end = findBlockEnd(text, start + 1)
+      if (end < 0) {
+        fail(strict, `Unclosed "\${" near: ${text.slice(start, start + 40)}`)
+        out += text.slice(start)
+        break
+      }
+      out += `${OPEN}${this.blocks.push(text.slice(start, end + 1)) - 1}${CLOSE}`
+      cursor = end + 1
+    }
+    return out
+  }
+
+  /**
+   * Resolves every placeholder in `text`. The chosen branch goes through `expand` (fragments, wildcards), which may
+   * itself bring in new placeholders from fragment lines; those are resolved in the next round.
+   */
+  resolve(
+    text: string,
+    values: ReadonlyMap<string, string>,
+    strict: boolean,
+    expand: (branch: string) => string
+  ): string {
+    let current = text
+    let emptied = false
+    for (let round = 0; current.includes(OPEN); round++) {
+      if (round > MAX_DEPTH) {
+        fail(strict, 'Variable blocks are nested too deeply.')
+        return current.replace(PLACEHOLDER, '')
+      }
+      current = current.replace(PLACEHOLDER, (_match, index: string) => {
+        const block = this.blocks[Number(index)] ?? ''
+        const result = expand(resolveVariableBlocks(block, values, strict))
+        if (result.trim() === '') emptied = true
+        return result
+      })
+    }
+    return emptied ? tidyCommas(current) : current
+  }
+}
+
+const OPEN = ''
+const CLOSE = ''
+const PLACEHOLDER = new RegExp(`${OPEN}(\\d+)${CLOSE}`, 'g')
 
 /** Replaces every `${...}` block in `text` using the rolled `values`. */
 export function resolveVariableBlocks(
