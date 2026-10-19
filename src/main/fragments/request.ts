@@ -44,10 +44,29 @@ function mapRequestTexts(
 }
 
 /**
+ * Fragment lines (saved fragments and spreadsheet cells) may themselves contain `${Var: ...}` blocks, for
+ * example a "selector" fragment that holds the whole case list. Blocks are resolved on each line as it is
+ * looked up, before that line is expanded, so they work at any nesting depth.
+ */
+function withVariableBlocks(
+  source: FragmentSource,
+  values: ReadonlyMap<string, string>,
+  strict: boolean
+): FragmentSource {
+  return {
+    getLines: (path) => {
+      const lines = source.getLines(path)
+      return lines ? lines.map((line) => resolveVariableBlocks(line, values, strict)) : lines
+    }
+  }
+}
+
+/**
  * Process each queued image once; split metadata and the transmitted prompt share the result.
  *
  * Order: strip comments -> collect `$Var = ...` definitions from every field and roll them once ->
- * resolve `${Var: ...}` blocks in every field -> expand `<fragments>` / `<Sheet/Key>` / wildcards.
+ * resolve `${Var: ...}` blocks in every field, and in every fragment line as it is expanded ->
+ * expand `<fragments>` / `<Sheet/Key>` / wildcards.
  * Comments go first so a commented-out line can neither define a variable nor consume a fragment.
  *
  * Throws (so the queue item fails with a readable message instead of spending Anlas on a broken prompt)
@@ -66,9 +85,10 @@ export function preprocessRequest(
     extractVariableDefinitions(removeComments(text), definitions)
   )
   const values = rollVariables(definitions, { source: fragments, rng, strict: true })
+  const expanding = withVariableBlocks(fragments, values, true)
 
   return mapRequestTexts(stripped, (text) =>
-    processWildcards(resolveVariableBlocks(text, values, true), fragments, rng)
+    processWildcards(resolveVariableBlocks(text, values, true), expanding, rng)
   )
 }
 
@@ -89,7 +109,8 @@ export function previewTexts(
     extractVariableDefinitions(removeComments(text), definitions)
   )
   const values = rollVariables(definitions, { source: fragments, rng, strict: false })
+  const expanding = withVariableBlocks(fragments, values, false)
   return stripped.map((text) =>
-    processWildcards(resolveVariableBlocks(text, values, false), fragments, rng, true)
+    processWildcards(resolveVariableBlocks(text, values, false), expanding, rng, true)
   )
 }
