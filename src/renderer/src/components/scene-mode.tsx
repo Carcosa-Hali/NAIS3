@@ -34,7 +34,7 @@ import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from '@d
 import { AnimatePresence, motion } from 'motion/react'
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Scene, SceneCast } from '@shared/types'
-import { RESOLUTIONS, imageUrl } from '../lib/constants'
+import { RESOLUTIONS, imageUrl, thumbnailFallback } from '../lib/constants'
 import { useT } from '../lib/i18n'
 import { useGenerationStore } from '../stores/generation-store'
 import { loadCasts, useScenesStore } from '../stores/scenes-store'
@@ -380,8 +380,8 @@ function SceneGrid(): React.JSX.Element {
     void reorder(arrayMove(scenes, from, to).map((s) => s.id))
   }
 
-  // 스트리밍: 현재 생성 중인 씬과 미리보기 프레임 (해당 씬 카드에만 전달)
-  const previewPng = useGenerationStore((s) => s.previewPng)
+  // Streaming: only the scene being generated. The card subscribes to the preview frame itself,
+  // so per-step frames re-render that one card instead of the whole sortable grid
   const generatingSceneId = useGenerationStore(
     (s) => s.queue?.items.find((i) => i.state === 'generating')?.request.sceneId ?? null
   )
@@ -529,7 +529,6 @@ function SceneGrid(): React.JSX.Element {
                 <SceneCard
                   key={scene.id}
                   scene={scene}
-                  live={scene.id === generatingSceneId ? previewPng : null}
                   generating={scene.id === generatingSceneId}
                 />
               ))}
@@ -550,9 +549,9 @@ function SceneGrid(): React.JSX.Element {
                 className="relative overflow-hidden rounded-lg border border-accent bg-surface-2 shadow-2xl"
                 style={{ aspectRatio: CARD_ASPECT[cardOrientation] }}
               >
-                {dragScene.thumbnail ? (
+                {dragScene.thumbnailUrl ? (
                   <img
-                    src={`data:image/webp;base64,${dragScene.thumbnail}`}
+                    src={dragScene.thumbnailUrl}
                     className="h-full w-full object-cover"
                     draggable={false}
                     alt=""
@@ -798,13 +797,12 @@ function reserveBadges(
 /* eslint-disable react-hooks/refs */
 const SceneCard = memo(function SceneCard({
   scene,
-  live,
   generating
 }: {
   scene: Scene
-  live: string | null
   generating: boolean
 }): React.JSX.Element {
+  const live = useGenerationStore((s) => (generating ? s.previewPng : null))
   const editMode = useScenesStore((s) => s.editMode)
   const cardOrientation = useScenesStore((s) => s.cardOrientation)
   const selection = useScenesStore((s) => s.selection)
@@ -830,11 +828,7 @@ const SceneCard = memo(function SceneCard({
   // 카드는 작게 표시되므로 640 webp 썸네일이면 충분히 선명하고, 풀해상도 대신 써서 드래그가 부드럽다.
   const src = live
     ? `data:image/png;base64,${live}`
-    : scene.thumbnail
-      ? `data:image/webp;base64,${scene.thumbnail}`
-      : scene.thumbnailPath
-        ? imageUrl(scene.thumbnailPath)
-        : null
+    : scene.thumbnailUrl || (scene.thumbnailPath ? imageUrl(scene.thumbnailPath) : null)
 
   // 우클릭 메뉴/3-dot 공용 액션
   const renameScene = async (): Promise<void> => {
@@ -883,6 +877,7 @@ const SceneCard = memo(function SceneCard({
               src={src}
               className="h-full w-full cursor-pointer object-cover"
               draggable={false}
+              {...thumbnailFallback(scene.thumbnailPath)}
               alt=""
             />
           ) : (

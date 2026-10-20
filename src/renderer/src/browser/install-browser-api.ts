@@ -10,6 +10,7 @@ import {
   normalizeDelayRandomization,
   randomizedGenerationDelayMs
 } from '@shared/generation-delay'
+import { FinishedQueueLog, queueItemSnapshot } from '@shared/queue-status'
 import {
   browserFragmentSource,
   exportBrowserWorkspace,
@@ -43,7 +44,19 @@ let delayRandomization: GenerationDelayRandomization = {
   plusMs: 0
 }
 const queueControllers = new Map<string, AbortController>()
+const finishedQueue = new FinishedQueueLog()
 let queueRunning = false
+
+/** Copy for broadcasts/queries — like the desktop queue, the source image is left out */
+function queueSnapshot(): QueueStatus {
+  return structuredClone({ ...queue, items: queue.items.map(queueItemSnapshot) })
+}
+
+/** Records a finished item and drops old finished items past the limit */
+function markQueueItemFinished(id: string): void {
+  const stale = new Set(finishedQueue.record(id))
+  if (stale.size > 0) queue.items = queue.items.filter((item) => !stale.has(item.id))
+}
 
 function emit<C extends keyof IpcEventMap>(channel: C, payload: IpcEventMap[C]): void {
   listeners.get(channel)?.forEach((listener) => listener(payload))
@@ -136,6 +149,18 @@ function webPath(base64: string): string {
   return `data:image/png;base64,${base64}`
 }
 
+/** Stored base64 thumbnail → the URL field carried by the shared list types */
+function thumbnailDataUrl(base64: string | undefined): string {
+  return base64 ? `data:image/webp;base64,${base64}` : ''
+}
+
+function withThumbnailUrl<T extends { thumbnail: string }>({
+  thumbnail,
+  ...rest
+}: T): Omit<T, 'thumbnail'> & { thumbnailUrl: string } {
+  return { ...rest, thumbnailUrl: thumbnailDataUrl(thumbnail) }
+}
+
 async function imageDimensions(base64: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -188,12 +213,12 @@ async function runQueue(): Promise<void> {
   if (queueRunning) return
   queueRunning = true
   queue.running = true
-  emit('queue:changed', structuredClone(queue))
+  emit('queue:changed', queueSnapshot())
   try {
     let item = queue.items.find((candidate) => candidate.state === 'pending')
     while (item) {
       item.state = 'generating'
-      emit('queue:changed', structuredClone(queue))
+      emit('queue:changed', queueSnapshot())
       const controller = new AbortController()
       queueControllers.set(item.id, controller)
       try {
@@ -303,8 +328,9 @@ async function runQueue(): Promise<void> {
         }
       } finally {
         queueControllers.delete(item.id)
+        markQueueItemFinished(item.id)
       }
-      emit('queue:changed', structuredClone(queue))
+      emit('queue:changed', queueSnapshot())
       await new Promise((resolve) =>
         setTimeout(resolve, randomizedGenerationDelayMs(queue.delayMs, delayRandomization))
       )
@@ -313,7 +339,7 @@ async function runQueue(): Promise<void> {
   } finally {
     queue.running = false
     queueRunning = false
-    emit('queue:changed', structuredClone(queue))
+    emit('queue:changed', queueSnapshot())
   }
 }
 
@@ -468,7 +494,7 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
     }
   }
 
-  if (channel === 'queue:status') return structuredClone(queue)
+  if (channel === 'queue:status') return queueSnapshot()
   if (channel === 'queue:enqueue') {
     const state = await readBrowserState()
     const savedDelay = Number(state.settings.gen_delay_ms)
@@ -494,17 +520,20 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
       })
       return id
     })
-    emit('queue:changed', structuredClone(queue))
+    emit('queue:changed', queueSnapshot())
     void runQueue()
     return { ids }
   }
   if (channel === 'queue:cancel') {
     const ids = new Set(request.ids as string[])
     queue.items.forEach((item) => {
-      if (ids.has(item.id) && item.state === 'pending') item.state = 'cancelled'
+      if (ids.has(item.id) && item.state === 'pending') {
+        item.state = 'cancelled'
+        markQueueItemFinished(item.id)
+      }
       if (ids.has(item.id) && item.state === 'generating') queueControllers.get(item.id)?.abort()
     })
-    emit('queue:changed', structuredClone(queue))
+    emit('queue:changed', queueSnapshot())
     return undefined
   }
   if (channel === 'gen:setDelay') {
@@ -701,7 +730,10 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
     const state = await readBrowserState()
     const offset = Number(request.offset) || 0
     const limit = Number(request.limit) || 60
-    return { items: state.images.slice(offset, offset + limit), total: state.images.length }
+    return {
+      items: state.images.slice(offset, offset + limit).map(withThumbnailUrl),
+      total: state.images.length
+    }
   }
   if (channel === 'images:payload') {
     const item = (await readBrowserState()).images.find((candidate) => candidate.id === request.id)
@@ -1070,9 +1102,15 @@ async function scenesDispatch(channel: string, request: Record<string, unknown>)
       return undefined
     }
     if (channel === 'scenes:list')
-      return { items: state.scenes.filter((scene) => scene.presetId === request.presetId) }
-    if (channel === 'scenes:get')
-      return { scene: state.scenes.find((scene) => scene.id === request.id) ?? null }
+      return {
+        items: state.scenes
+          .filter((scene) => scene.presetId === request.presetId)
+          .map(withThumbnailUrl)
+      }
+    if (channel === 'scenes:get') {
+      const scene = state.scenes.find((item) => item.id === request.id)
+      return { scene: scene ? withThumbnailUrl(scene) : null }
+    }
     if (channel === 'scenes:create') {
       const preset = state.scenePresets.find((item) => item.id === request.presetId)
       const id = nextBrowserId(state)
@@ -1216,13 +1254,14 @@ async function libraryDispatch(
       const stacks = state.libraryStacks.map((stack) => {
         const images = state.libraryImages.filter((item) => item.stackId === stack.id)
         return {
-          ...stack,
+          id: stack.id,
+          name: stack.name,
           count: images.length,
-          coverThumbnail: images.at(-1)?.thumbnail ?? ''
+          coverUrl: thumbnailDataUrl(images.at(-1)?.thumbnail)
         }
       })
       return {
-        items: all.slice(offset, offset + limit),
+        items: all.slice(offset, offset + limit).map(withThumbnailUrl),
         stacks: stackId === undefined || stackId === null ? stacks : [],
         total: all.length
       }

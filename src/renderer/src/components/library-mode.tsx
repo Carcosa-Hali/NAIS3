@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { LibraryImage, LibraryStack } from '@shared/types'
-import { imageUrl } from '../lib/constants'
+import { imageUrl, thumbnailFallback } from '../lib/constants'
 import { useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
 import { askConfirm, askText } from '../stores/dialog-store'
@@ -432,11 +432,7 @@ export function LibraryMode(): React.JSX.Element {
                   style={{ aspectRatio: CARD_ASPECT[cardOrientation] }}
                 >
                   <img
-                    src={
-                      dragImg.thumbnail
-                        ? `data:image/webp;base64,${dragImg.thumbnail}`
-                        : imageUrl(dragImg.filePath)
-                    }
+                    src={dragImg.thumbnailUrl || imageUrl(dragImg.filePath)}
                     className="h-full w-full object-cover"
                     draggable={false}
                     alt=""
@@ -563,10 +559,11 @@ function ImageCard({
         onClick={onClick}
       >
         <img
-          src={img.thumbnail ? `data:image/webp;base64,${img.thumbnail}` : imageUrl(img.filePath)}
+          src={img.thumbnailUrl || imageUrl(img.filePath)}
           className="h-full w-full object-cover"
           draggable={false}
           loading="lazy"
+          {...thumbnailFallback(img.filePath)}
           alt=""
         />
         {editMode && (
@@ -619,12 +616,13 @@ function StackCard({
           {/* 스택 느낌 — 뒤에 살짝 어긋난 레이어 */}
           <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-lg border border-line bg-paper" />
           <div className="absolute inset-0 overflow-hidden rounded-lg">
-            {stack.coverThumbnail ? (
+            {stack.coverUrl ? (
               <img
-                src={`data:image/webp;base64,${stack.coverThumbnail}`}
+                src={stack.coverUrl}
                 className="h-full w-full object-cover"
                 draggable={false}
                 loading="lazy"
+                {...thumbnailFallback(null)}
                 alt=""
               />
             ) : (
