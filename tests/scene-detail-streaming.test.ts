@@ -114,6 +114,20 @@ describe('SceneDetail streaming tile', () => {
     expect(tileRenders.count).toBe(before)
   })
 
+  it('keeps the held frame in a scene with no images until the finished image arrives', async () => {
+    useScenesStore.setState({ images: [], imagesTotal: 0, imagesLoading: false })
+    await act(async () => root.render(h(SceneDetail, { scene: { ...SCENE, imageCount: 0 } })))
+    await act(async () => useGenerationStore.setState({ previewPng: 'AAA' }))
+
+    // Item finished but the scene's image list has not reloaded yet: the grid must stay mounted
+    await act(async () => useGenerationStore.setState({ queue: queue(false), previewPng: null }))
+    expect(streamSrcs(container)).toEqual(['data:image/png;base64,AAA'])
+
+    // Reload starts: the same tile (and its held frame) survives
+    await act(async () => useScenesStore.setState({ imagesLoading: true }))
+    expect(streamSrcs(container)).toEqual(['data:image/png;base64,AAA'])
+  })
+
   it('shows no streaming tile when streaming ends without any frame', async () => {
     await act(async () => root.render(h(SceneDetail, { scene: SCENE })))
     await act(async () => useGenerationStore.setState({ queue: queue(false) }))

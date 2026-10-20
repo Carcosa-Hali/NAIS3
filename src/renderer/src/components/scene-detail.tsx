@@ -297,7 +297,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
           </div>
         </div>
 
-        {images.length === 0 && !imagesLoading && !streaming ? (
+        {images.length === 0 && !imagesLoading && !showTile ? (
           <p className="py-10 text-center text-[13px] text-faint">
             {favoritesOnly
               ? t('ui.noFavoritedImages')
