@@ -1,9 +1,12 @@
 name: Release
 
 # Tags build a fully validated draft. Publishing remains a separate manual step.
+# A manual run is a dry run: it builds and validates every platform without
+# checking a tag or touching any release.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +17,7 @@ concurrency:
 
 jobs:
   validate:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -31,6 +35,8 @@ jobs:
 
   build:
     needs: validate
+    # validate is skipped only on a manual dry run; a failed or cancelled check still blocks.
+    if: ${{ !cancelled() && (needs.validate.result == 'success' || (github.event_name == 'workflow_dispatch' && needs.validate.result == 'skipped')) }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -70,6 +76,15 @@ jobs:
         run: node scripts/verify-macos-native-deps.mjs
       - run: node scripts/verify-packaged-app.mjs ${{ matrix.platform }} ${{ matrix.arch }}
       - run: node scripts/verify-release.mjs assets ${{ matrix.platform }}-${{ matrix.arch }}
+      # Repeat the smoke test inside the AppImage itself. Extraction needs no FUSE.
+      - if: runner.os == 'Linux'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          appimage="$PWD/dist/nais3-$version-x86_64.AppImage"
+          extracted="$(mktemp -d)"
+          chmod +x "$appimage"
+          (cd "$extracted" && "$appimage" --appimage-extract > /dev/null)
+          node scripts/verify-packaged-app.mjs linux x64 "$extracted/squashfs-root"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
@@ -85,6 +100,7 @@ jobs:
 
   release:
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

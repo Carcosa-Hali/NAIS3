@@ -33,8 +33,15 @@ its assets; the final aggregation must contain exactly these nine files:
 - `nais3-<version>-x86_64.AppImage`
 
 The validator checks Windows and Linux update metadata version, file paths, sizes,
-and SHA-512, the AppImage header, and Mac ZIP bundle paths, identifiers, and versions. Run it locally against the
-downloaded draft files with `node scripts/verify-release.mjs assets all <directory>`.
+and SHA-512, the AppImage header, and Mac ZIP bundle paths, identifiers, and versions. The
+Linux build also extracts the AppImage and repeats the packaged-app smoke test on its
+contents. Run the validator locally against the downloaded draft files with
+`node scripts/verify-release.mjs assets all <directory>`.
+
+To exercise the builds before tagging, run the Release workflow manually (Actions →
+Release → Run workflow) on the branch to test. A manual run builds and validates every
+platform and keeps the files as workflow artifacts, but skips the tag checks and never
+creates or modifies a release.
 
 ## Review and publish
 
