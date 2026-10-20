@@ -138,7 +138,9 @@ describe('listScenes cover lookup', () => {
       previous.map((r) => ({
         id: r.id,
         imageCount: r.image_count,
-        thumbnailUrl: r.thumb ? thumbnailUrl('image', r.thumb_id!, r.thumb_created_at!) : '',
+        thumbnailUrl: r.thumb?.length
+          ? thumbnailUrl('image', r.thumb_id!, r.thumb_created_at!, r.thumb.length)
+          : '',
         thumbnailPath: r.thumb_path ?? '',
         hasFavorite: r.has_favorite === 1
       }))

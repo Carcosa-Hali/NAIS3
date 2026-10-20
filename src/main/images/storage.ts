@@ -120,7 +120,7 @@ export function storedThumbnailUrl(
   createdAt: string | null | undefined,
   thumbSize: number | null | undefined
 ): string {
-  return id != null && createdAt && thumbSize ? thumbnailUrl(source, id, createdAt) : ''
+  return id != null && createdAt && thumbSize ? thumbnailUrl(source, id, createdAt, thumbSize) : ''
 }
 
 /** 자동저장 OFF 메인 생성 저장 — 파일 없이 메모리 + 썸네일 행. 최근 N장 초과분은 행·버퍼 정리 */

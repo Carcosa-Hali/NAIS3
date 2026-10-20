@@ -10,9 +10,16 @@ export function isThumbnailSource(value: string | null): value is ThumbnailSourc
 }
 
 /**
- * `version` must change whenever a row id could point at different content. INTEGER PRIMARY
- * KEY ids are reused after the newest row is deleted, so callers pass the row's created_at.
+ * The `v` param must change whenever a row id could point at different content. INTEGER PRIMARY
+ * KEY ids are reused after the newest row is deleted, and created_at only has second precision,
+ * so the version combines the row's created_at with its thumbnail byte length.
  */
-export function thumbnailUrl(source: ThumbnailSource, id: number, version: string): string {
-  return `nais-image://local/?thumb=${source}&id=${id}&v=${encodeURIComponent(version)}`
+export function thumbnailUrl(
+  source: ThumbnailSource,
+  id: number,
+  createdAt: string,
+  size: number
+): string {
+  const version = encodeURIComponent(`${createdAt}~${size}`)
+  return `nais-image://local/?thumb=${source}&id=${id}&v=${version}`
 }

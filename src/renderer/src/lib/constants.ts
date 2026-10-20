@@ -44,3 +44,23 @@ export function imageUrl(filePath: string): string {
   if (filePath.startsWith('data:') || filePath.startsWith('blob:')) return filePath
   return `nais-image://local/?path=${encodeURIComponent(filePath)}`
 }
+
+/**
+ * 목록 썸네일 <img> 실패 대비 — 목록 수신 후 행이 지워져 썸네일 URL이 404면 원본으로 1회 교체,
+ * 원본도 없거나 실패하면 숨긴다. 새 src가 로드되면 다시 보이게 한다.
+ */
+export function thumbnailFallback(fallbackPath: string | null | undefined): {
+  onError: (e: { currentTarget: HTMLImageElement }) => void
+  onLoad: (e: { currentTarget: HTMLImageElement }) => void
+} {
+  return {
+    onError: ({ currentTarget: img }) => {
+      const fallback = fallbackPath ? imageUrl(fallbackPath) : ''
+      if (fallback && img.getAttribute('src') !== fallback) img.src = fallback
+      else img.style.visibility = 'hidden'
+    },
+    onLoad: ({ currentTarget: img }) => {
+      img.style.visibility = ''
+    }
+  }
+}

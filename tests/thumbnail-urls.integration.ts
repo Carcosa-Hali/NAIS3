@@ -46,11 +46,11 @@ describe('thumbnail URLs', () => {
     expect(items.map((i) => [i.id, i.thumbnailUrl])).toEqual([
       [3, ''],
       [2, ''],
-      [1, thumbnailUrl('image', 1, T1)]
+      [1, thumbnailUrl('image', 1, T1, 2)]
     ])
     expect(items[2]).not.toHaveProperty('thumbnail')
     expect(items[2].thumbnailUrl).toBe(
-      'nais-image://local/?thumb=image&id=1&v=2026-01-02%2003%3A04%3A05'
+      'nais-image://local/?thumb=image&id=1&v=2026-01-02%2003%3A04%3A05~2'
     )
     expect(fetchThumb(items[2].thumbnailUrl)).toBe('0102')
   })
@@ -67,6 +67,21 @@ describe('thumbnail URLs', () => {
     expect(after.id).toBe(1)
     expect(after.thumbnailUrl).not.toBe(before)
     expect(fetchThumb(after.thumbnailUrl)).toBe('02')
+  })
+
+  it('changes the URL when a deleted id is reused within the same second', () => {
+    // created_at has second precision — the thumbnail size keeps the URLs apart
+    const db = getDb()
+    db.exec(`INSERT INTO images (id, file_path, thumbnail, payload_json, created_at)
+             VALUES (1, '/a.png', X'01', '{}', '${T1}')`)
+    const before = listImages(1, 0).items[0].thumbnailUrl
+    db.exec('DELETE FROM images')
+    db.exec(`INSERT INTO images (file_path, thumbnail, payload_json, created_at)
+             VALUES ('/b.png', X'0203', '{}', '${T1}')`)
+    const after = listImages(1, 0).items[0]
+    expect(after.id).toBe(1)
+    expect(after.thumbnailUrl).not.toBe(before)
+    expect(fetchThumb(after.thumbnailUrl)).toBe('0203')
   })
 
   it('rejects unknown sources, bad ids and missing rows', () => {
@@ -91,7 +106,7 @@ describe('thumbnail URLs', () => {
     `)
     const [a, b] = listScenes(1)
     expect(a).toMatchObject({
-      thumbnailUrl: thumbnailUrl('image', 1, T1),
+      thumbnailUrl: thumbnailUrl('image', 1, T1, 1),
       thumbnailPath: '/s1/1.png'
     })
     expect(fetchThumb(a.thumbnailUrl)).toBe('01')
@@ -118,13 +133,13 @@ describe('thumbnail URLs', () => {
     const root = listLibrary(null, 10, 0)
     expect(root.items.map((i) => [i.id, i.thumbnailUrl])).toEqual([
       [2, ''],
-      [1, thumbnailUrl('library', 1, T1)]
+      [1, thumbnailUrl('library', 1, T1, 1)]
     ])
     expect(fetchThumb(root.items[1].thumbnailUrl)).toBe('01')
     expect(root.stacks).toEqual([
       { id: 3, name: 'no thumb', count: 1, coverUrl: '' },
       { id: 2, name: 'empty', count: 0, coverUrl: '' },
-      { id: 1, name: 'full', count: 2, coverUrl: thumbnailUrl('library', 4, T2) }
+      { id: 1, name: 'full', count: 2, coverUrl: thumbnailUrl('library', 4, T2, 1) }
     ])
     expect(fetchThumb(root.stacks[2].coverUrl)).toBe('04')
   })

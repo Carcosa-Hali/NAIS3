@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { LibraryImage, LibraryStack } from '@shared/types'
-import { imageUrl } from '../lib/constants'
+import { imageUrl, thumbnailFallback } from '../lib/constants'
 import { useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
 import { askConfirm, askText } from '../stores/dialog-store'
@@ -563,6 +563,7 @@ function ImageCard({
           className="h-full w-full object-cover"
           draggable={false}
           loading="lazy"
+          {...thumbnailFallback(img.filePath)}
           alt=""
         />
         {editMode && (
@@ -621,6 +622,7 @@ function StackCard({
                 className="h-full w-full object-cover"
                 draggable={false}
                 loading="lazy"
+                {...thumbnailFallback(null)}
                 alt=""
               />
             ) : (

@@ -34,7 +34,7 @@ import { arrayMove, rectSortingStrategy, SortableContext, useSortable } from '@d
 import { AnimatePresence, motion } from 'motion/react'
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Scene, SceneCast } from '@shared/types'
-import { RESOLUTIONS, imageUrl } from '../lib/constants'
+import { RESOLUTIONS, imageUrl, thumbnailFallback } from '../lib/constants'
 import { useT } from '../lib/i18n'
 import { useGenerationStore } from '../stores/generation-store'
 import { loadCasts, useScenesStore } from '../stores/scenes-store'
@@ -879,6 +879,7 @@ const SceneCard = memo(function SceneCard({
               src={src}
               className="h-full w-full cursor-pointer object-cover"
               draggable={false}
+              {...thumbnailFallback(scene.thumbnailPath)}
               alt=""
             />
           ) : (
