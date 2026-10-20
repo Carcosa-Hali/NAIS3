@@ -28,5 +28,23 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // Linux Electron에서는 sharp를 WebAssembly 빌드로 바꿔 로드해야 하므로 main은 ./sharp 래퍼만 사용
+    files: ['src/main/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'sharp',
+              message: "Import sharp from src/main/sharp.ts ('./sharp' or '../sharp') instead.",
+              allowTypeImports: true
+            }
+          ]
+        }
+      ]
+    }
+  },
   eslintConfigPrettier
 )
