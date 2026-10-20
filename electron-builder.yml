@@ -28,6 +28,9 @@ asarUnpack:
   - node_modules/@img/**
 win:
   executableName: NAIS3
+  files:
+    # @img/sharp-wasm32(~9MB)는 Linux Electron 전용 (src/main/sharp-loader.ts) — win/mac 설치본에서 제외
+    - '!node_modules/@img/sharp-wasm32/**'
   # Windows는 둥근 모서리·여백 규칙이 없어 mac용(여백 큼) 대신 여백 최소 버전 사용
   icon: build/icon-win.png
   target:
@@ -44,6 +47,8 @@ nsis:
 mac:
   # macOS 표준 여백(박스 ~80%) 버전
   icon: build/icon.png
+  files:
+    - '!node_modules/@img/sharp-wasm32/**'
   # zip에 아키텍처 명시 (기본값은 x64에서 arch 생략 → 업데이터가 못 찾음). dmg는 아래 dmg.artifactName이 우선
   artifactName: ${name}-${version}-${arch}-mac.${ext}
   entitlementsInherit: build/entitlements.mac.plist
