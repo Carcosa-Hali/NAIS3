@@ -457,7 +457,7 @@ export function PromptEditor({
         <span
           className={cn(
             'pointer-events-none absolute bottom-1 right-1.5 rounded bg-paper/85 px-1 font-mono text-[10.5px] backdrop-blur-sm',
-            tokens > tokenLimit ? 'text-danger' : 'text-faint'
+            tokens > tokenLimit ? 'text-danger-ink' : 'text-faint'
           )}
           title={
             tokens > tokenLimit

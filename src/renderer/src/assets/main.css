@@ -21,17 +21,23 @@
   --line: #e3e3e6;
   --accent: #c2610a;
   --accent-soft: rgba(194, 97, 10, 0.13);
-  /* Status and on-* colors are recomputed for contrast by buildWhimsTokens per preset */
-  --on-accent: #000000;
-  --danger: #864842;
+  /* Status fills keep the palette color; *-ink (text/icons) and on-* colors are recomputed
+     for contrast by buildWhimsTokens per preset */
+  --on-accent: #ffffff;
+  --danger: #a85a52;
   --on-danger: #ffffff;
-  --success: #395f45;
-  --warning: #6b592a;
-  --info: #3f5a6e;
+  --danger-ink: #864842;
+  --success: #4c7f5c;
+  --success-ink: #3d664a;
+  --warning: #8f7638;
+  --warning-ink: #6b592a;
+  --info: #4f7189;
+  --info-ink: #436074;
 
   /* Fixed UI colors independent of the preset — define them here instead of hardcoding */
   --brand-paper: #0f0f10; /* loading splash: always dark so the white logo shows */
   --brand-accent: #eb9550;
+  --window-close: #e81123; /* titlebar close hover — OS convention: red with a white X */
   --anlas: #c9a34f;
   --favorite: oklch(82.8% 0.189 84.429);
   --search-hit: rgba(233, 200, 50, 0.4);
@@ -56,6 +62,7 @@
   --hue-sky: oklch(58.8% 0.158 241.966);
   --hue-indigo: oklch(51.1% 0.262 276.966);
   --hue-violet: oklch(54.1% 0.281 293.009);
+  --hue-violet-soft: var(--hue-violet); /* .on-image sets the lighter 300 tone */
   --hue-purple: oklch(55.8% 0.288 302.321);
   --hue-fuchsia: oklch(59.1% 0.293 322.896);
   --hue-pink: oklch(59.2% 0.249 0.584);
@@ -85,11 +92,15 @@
   --accent: #eb9550;
   --accent-soft: rgba(235, 149, 80, 0.14);
   --on-accent: #000000;
-  --danger: #d0958e;
-  --on-danger: #000000;
+  --danger: #c47a72;
+  --on-danger: #ffffff;
+  --danger-ink: #cd8e87;
   --success: #84ac8e;
+  --success-ink: #84ac8e;
   --warning: #c4b184;
+  --warning-ink: #c4b184;
   --info: #8fa4b5;
+  --info-ink: #8fa4b5;
 }
 
 /* Dark mode 400 tones. Image badges (.on-image, dark translucent backdrop)
@@ -110,6 +121,11 @@
   --hue-rose: oklch(71.2% 0.194 13.428);
 }
 
+/* Lighter violet (300) for the secondary declutter badge, which only appears on images */
+.on-image {
+  --hue-violet-soft: oklch(81.1% 0.111 293.571);
+}
+
 @theme inline {
   --color-paper: var(--paper);
   --color-surface: var(--surface);
@@ -123,9 +139,14 @@
   --color-on-accent: var(--on-accent);
   --color-danger: var(--danger);
   --color-on-danger: var(--on-danger);
+  --color-danger-ink: var(--danger-ink);
   --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
   --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
   --color-info: var(--info);
+  --color-info-ink: var(--info-ink);
+  --color-window-close: var(--window-close);
   --color-brand-paper: var(--brand-paper);
   --color-brand-accent: var(--brand-accent);
   --color-anlas: var(--anlas);
@@ -143,6 +164,7 @@
   --color-hue-sky: var(--hue-sky);
   --color-hue-indigo: var(--hue-indigo);
   --color-hue-violet: var(--hue-violet);
+  --color-hue-violet-soft: var(--hue-violet-soft);
   --color-hue-purple: var(--hue-purple);
   --color-hue-fuchsia: var(--hue-fuchsia);
   --color-hue-pink: var(--hue-pink);

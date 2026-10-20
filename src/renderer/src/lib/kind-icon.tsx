@@ -36,7 +36,7 @@ const KIND_MAP: Record<string, KindMeta> = {
   declutter: { Icon: Sparkles, className: 'text-hue-violet', label: 'ui.declutter' },
   'declutter-keep-bubbles': {
     Icon: MessageSquareText,
-    className: 'text-hue-violet/70',
+    className: 'text-hue-violet-soft',
     label: 'ui.declutter.85446fc'
   },
   mosaic: { Icon: Grid3x3, className: 'text-hue-orange', label: 'ui.mosaic' }

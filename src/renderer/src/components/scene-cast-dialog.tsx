@@ -303,7 +303,7 @@ function CastRow({
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 shrink-0 p-0 text-muted hover:text-fg"
+        className="h-7 w-7 shrink-0 p-0 text-muted hover:text-ink"
         title={t('ui.editLoadIntoTheBuilderAbove')}
         onClick={onEdit}
       >
@@ -312,7 +312,7 @@ function CastRow({
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 shrink-0 p-0 text-danger hover:text-danger"
+        className="h-7 w-7 shrink-0 p-0 text-danger-ink hover:text-danger-ink"
         title={t('ui.deleteCastItsQueuesAreAlsoExcludedFromRuns')}
         onClick={onRemove}
       >

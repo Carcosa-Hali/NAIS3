@@ -407,7 +407,7 @@ export function DirectorMode(): React.JSX.Element {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2 no-scrollbar">
           {error && (
-            <p className="mb-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[12px] text-danger">
+            <p className="mb-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[12px] text-danger-ink">
               {error}
             </p>
           )}
@@ -583,11 +583,11 @@ function CostChip({ cost }: { cost: number | null }): React.JSX.Element | null {
   const t = useT()
   if (cost == null) return null
   return cost === 0 ? (
-    <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
+    <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success-ink">
       {t('ui.free')}
     </span>
   ) : (
-    <span className="shrink-0 rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-danger">
+    <span className="shrink-0 rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-danger-ink">
       -{cost}
     </span>
   )

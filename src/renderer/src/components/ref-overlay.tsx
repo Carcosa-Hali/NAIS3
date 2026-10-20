@@ -239,7 +239,7 @@ export function RefOverlay({ kind }: { kind: 'vibe' | 'charref' }): React.JSX.El
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 w-7 p-0 hover:text-danger"
+            className="h-7 w-7 p-0 hover:text-danger-ink"
             title={t('ui.delete')}
             onClick={() => remove(item.id)}
           >
@@ -345,7 +345,7 @@ export function RefOverlay({ kind }: { kind: 'vibe' | 'charref' }): React.JSX.El
           <Button
             size="sm"
             variant="ghost"
-            className="gap-1 text-danger hover:text-danger"
+            className="gap-1 text-danger-ink hover:text-danger-ink"
             disabled={selected.size === 0}
             onClick={() => void bulkDelete()}
           >

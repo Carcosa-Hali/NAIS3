@@ -60,8 +60,9 @@ export function ensureContrast(
   target = 4.5,
   tint = 0
 ): string {
-  for (let t = 0; t <= 1; t += 0.05) {
-    const candidate = mixHex(fg, toward, t)
+  // Integer steps so t reaches exactly 1 (summing 0.05 twenty times overshoots 1 and skips the last step)
+  for (let step = 0; step <= 20; step++) {
+    const candidate = mixHex(fg, toward, step / 20)
     const bgs =
       tint > 0
         ? [...backgrounds, ...backgrounds.map((bg) => mixHex(bg, candidate, tint))]
@@ -71,9 +72,16 @@ export function ensureContrast(
   return toward
 }
 
-/** Text color for a filled background bg — whichever of white or black contrasts more */
+/**
+ * Contrast white text needs on a fill before it is preferred over black (readableOn).
+ * 3:1 (large text / UI) keeps white labels on mid-tone accents like NAIS3 #c2610a, at the cost
+ * of WCAG AA for 13px button text there (about 4.0–4.2:1 instead of 4.5:1).
+ */
+export const WHITE_ON_FILL_MIN = 3
+
+/** Text color for a filled background bg — white when it reaches WHITE_ON_FILL_MIN, else black */
 export function readableOn(bg: string): string {
-  return contrastRatio(bg, '#ffffff') >= contrastRatio(bg, '#000000') ? '#ffffff' : '#000000'
+  return contrastRatio(bg, '#ffffff') >= WHITE_ON_FILL_MIN ? '#ffffff' : '#000000'
 }
 
 /** Inpaint mask display color (R, G, B). Canvas can't read CSS variables, so it lives in TS. */

@@ -61,7 +61,7 @@ export function MetadataDialog(): React.JSX.Element {
             <Loader2 size={18} className="animate-spin" /> {t('ui.reading')}
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-danger">
+          <div className="flex flex-col items-center gap-3 py-14 text-danger-ink">
             <ImageOff size={30} strokeWidth={1.4} />
             <p className="text-[13px]">{error}</p>
           </div>

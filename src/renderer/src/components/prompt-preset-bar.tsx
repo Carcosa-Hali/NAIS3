@@ -132,7 +132,7 @@ export function PromptPresetBar(): React.JSX.Element {
                     <Pencil size={12} />
                   </button>
                   <button
-                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger-ink group-hover:opacity-100"
                     onClick={async () => {
                       if (await askConfirm(t('ui.deletePresetValue', p.name), { danger: true }))
                         void remove(p.id)

@@ -243,7 +243,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
         </div>
 
         <div className="mt-4 mb-2 flex items-center gap-2 text-[12px] text-muted">
-          <span className="font-medium text-fg">{t('ui.generatedImages')}</span>
+          <span className="font-medium text-ink">{t('ui.generatedImages')}</span>
           <span>{t('ui.valueImages', imagesTotal.toLocaleString())}</span>
           <div className="flex-1" />
           {/* 즐겨찾기만 보기 (N4) */}
@@ -274,7 +274,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                 n > 0 ? 'success' : 'info'
               )
             }}
-            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger"
+            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger-ink"
             title={t('ui.deleteAllExceptFavorites')}
           >
             <Trash2 size={12} /> {t('ui.declutter')}

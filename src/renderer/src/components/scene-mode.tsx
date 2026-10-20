@@ -128,7 +128,7 @@ function PresetDropdown(): React.JSX.Element {
                     <span className="truncate">{p.name}</span>
                   </div>
                   <button
-                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-fg group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-ink group-hover:opacity-100"
                     onClick={async () => {
                       const name = await askText(t('ui.presetName'), p.name)
                       if (name) void renamePreset(p.id, name)
@@ -140,7 +140,7 @@ function PresetDropdown(): React.JSX.Element {
                   </button>
                   {presets.length > 1 && (
                     <button
-                      className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger group-hover:opacity-100"
+                      className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger-ink group-hover:opacity-100"
                       onClick={async () => {
                         if (
                           await askConfirm(t('ui.deletePreset'), {
@@ -262,7 +262,7 @@ function CastSelector(): React.JSX.Element {
                     </span>
                   </div>
                   <button
-                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger-ink group-hover:opacity-100"
                     onClick={async () => {
                       if (
                         await askConfirm(t('ui.deleteCast'), {
@@ -323,7 +323,7 @@ function IconBtn({
           aria-pressed={active === undefined ? undefined : active}
           className={cn(
             'grid size-8 place-items-center rounded-md transition-colors',
-            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
+            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-ink'
           )}
         >
           {icon}
@@ -615,7 +615,7 @@ function BulkBar(): React.JSX.Element {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface-2 px-3 py-2 text-[13px]">
-      <span className="font-medium text-fg">{t('ui.valueSelected', n)}</span>
+      <span className="font-medium text-ink">{t('ui.valueSelected', n)}</span>
       <Button size="sm" variant="ghost" onClick={selectAll}>
         {t('ui.selectAll')}
       </Button>
@@ -628,7 +628,7 @@ function BulkBar(): React.JSX.Element {
       <div className="flex items-center gap-0.5 rounded-full border border-line bg-paper p-0.5">
         <span className="px-1.5 text-[12px] text-muted">{t('ui.queue')}</span>
         <button
-          className="grid size-5 place-items-center rounded-full text-fg hover:bg-surface-2 disabled:opacity-30"
+          className="grid size-5 place-items-center rounded-full text-ink hover:bg-surface-2 disabled:opacity-30"
           disabled={disabled}
           title={reserveTip(-1)}
           aria-label={reserveTip(-1)}
@@ -637,7 +637,7 @@ function BulkBar(): React.JSX.Element {
           <Minus size={13} />
         </button>
         <button
-          className="grid size-5 place-items-center rounded-full text-fg hover:bg-surface-2 disabled:opacity-30"
+          className="grid size-5 place-items-center rounded-full text-ink hover:bg-surface-2 disabled:opacity-30"
           disabled={disabled}
           title={reserveTip(1)}
           aria-label={reserveTip(1)}
@@ -725,7 +725,7 @@ function BulkBar(): React.JSX.Element {
       <Button
         size="sm"
         variant="ghost"
-        className="text-danger"
+        className="text-danger-ink"
         disabled={disabled}
         onClick={async () => {
           if (
@@ -1082,7 +1082,7 @@ function MenuItem({
     <button
       className={cn(
         'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-surface-2',
-        danger && 'text-danger'
+        danger && 'text-danger-ink'
       )}
       onClick={onClick}
     >

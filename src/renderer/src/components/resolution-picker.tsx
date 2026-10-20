@@ -119,7 +119,7 @@ export function ResolutionPicker({
               <button
                 title={t('ui.delete')}
                 onClick={() => remove(i)}
-                className="grid size-6 shrink-0 place-items-center rounded text-faint opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                className="grid size-6 shrink-0 place-items-center rounded text-faint opacity-0 transition-opacity hover:text-danger-ink group-hover:opacity-100"
               >
                 <Trash2 size={12} />
               </button>

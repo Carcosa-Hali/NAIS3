@@ -116,7 +116,7 @@ function OpusUsageChip(): React.JSX.Element | null {
           : t('ui.v5OpusRechargeGaugeAboutValueHUntilTheNext1', hours.toFixed(1))
       }
     >
-      <BatteryCharging size={12} className={usage.isNegative ? 'text-danger' : 'text-accent'} />
+      <BatteryCharging size={12} className={usage.isNegative ? 'text-danger-ink' : 'text-accent'} />
       {percent}%
     </span>
   )
@@ -248,7 +248,7 @@ export function Titlebar(): React.JSX.Element {
             <Square size={12} />
           </BarButton>
           <BarButton
-            className="w-9 hover:bg-danger hover:text-on-danger"
+            className="w-9 hover:bg-window-close hover:text-white"
             onClick={() => ctrl('close')}
             aria-label={t('ui.close')}
           >

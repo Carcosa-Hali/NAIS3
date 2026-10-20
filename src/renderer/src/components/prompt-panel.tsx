@@ -539,7 +539,7 @@ function TokenBadge({
     <span
       className={
         'rounded bg-paper px-1.5 py-0.5 font-mono text-[10.5px] ' +
-        (over ? 'text-danger' : 'text-faint')
+        (over ? 'text-danger-ink' : 'text-faint')
       }
       title={
         over

@@ -63,7 +63,7 @@ export function ArtistTagsDialog(): React.JSX.Element {
             <p className="text-[13px]">{t('ui.analyzingStyleMayTakeAFewSeconds')}</p>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-danger">
+          <div className="flex flex-col items-center gap-3 py-14 text-danger-ink">
             <ImageOff size={30} strokeWidth={1.4} />
             <p className="max-w-[80%] text-center text-[13px]">{error}</p>
           </div>

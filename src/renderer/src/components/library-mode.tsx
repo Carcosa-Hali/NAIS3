@@ -497,7 +497,7 @@ export function LibraryMode(): React.JSX.Element {
           <Button
             size="sm"
             variant="ghost"
-            className="gap-1 text-danger hover:text-danger"
+            className="gap-1 text-danger-ink hover:text-danger-ink"
             disabled={selection.size === 0}
             onClick={() => void confirmDelete([...selection])}
           >
@@ -682,7 +682,7 @@ function IconBtn({
           aria-pressed={active === undefined ? undefined : active}
           className={cn(
             'grid size-8 place-items-center rounded-md transition-colors',
-            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-fg'
+            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-ink'
           )}
         >
           {icon}
