@@ -165,6 +165,12 @@ describe('sharp WebAssembly build', () => {
     expect(NATIVE_LINUX_BINARY.test('@img/sharp-darwin-arm64/sharp.node')).toBe(false)
   })
 
+  // The packaged-app smoke test repeats the loader's hook in a plain script.
+  it('hides the same binaries in the packaged-app smoke test', () => {
+    const script = readFileSync('scripts/verify-packaged-app.mjs', 'utf8')
+    expect(script).toContain(`const NATIVE_LINUX_BINARY = /${NATIVE_LINUX_BINARY.source}/\n`)
+  })
+
   it('loads and processes images', async () => {
     const load = createRequire(join(process.cwd(), 'package.json'))
     for (const path of Object.keys(internal._cache)) {

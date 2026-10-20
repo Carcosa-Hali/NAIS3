@@ -63,4 +63,65 @@ const output = execFileSync(
   }
 )
 console.log(output.trim())
+
+// On Linux the app hides sharp's native binary and runs @img/sharp-wasm32 instead
+// (src/main/sharp-loader.ts). Repeat that hook here without the native fallback, so a
+// missing or broken WebAssembly build fails the release instead of passing silently.
+// Keep the pattern equal to NATIVE_LINUX_BINARY; tests/sharp-wasm.test.ts checks it.
+const NATIVE_LINUX_BINARY = /^@img\/sharp-linux(musl)?-[^/]+\/sharp\.node$/
+if (platform === 'linux') {
+  const wasmOutput = execFileSync(
+    executable,
+    [
+      '-e',
+      `
+      const assert = require('node:assert/strict');
+      const Module = require('node:module');
+      const path = require('node:path');
+      const [root, pattern] = process.argv.slice(1);
+      const nativeBinary = new RegExp(pattern);
+      const resolveFilename = Module._resolveFilename;
+      Module._resolveFilename = function (request, ...rest) {
+        if (nativeBinary.test(request)) {
+          throw Object.assign(new Error("Cannot find module '" + request + "'"), {
+            code: 'MODULE_NOT_FOUND'
+          });
+        }
+        return resolveFilename.call(this, request, ...rest);
+      };
+      let sharp;
+      try {
+        sharp = require(path.join(root, 'node_modules/sharp'));
+      } finally {
+        Module._resolveFilename = resolveFilename;
+      }
+      const loaded = Object.keys(require.cache).filter(file => /[\\/]@img[\\/]/.test(file));
+      assert.ok(loaded.some(file => /[\\/]@img[\\/]sharp-wasm32[\\/]/.test(file)),
+        'sharp did not load @img/sharp-wasm32: ' + loaded.join(', '));
+      assert.ok(!loaded.some(file => /[\\/]@img[\\/]sharp-linux(musl)?-/.test(file)),
+        'sharp loaded a native Linux binary: ' + loaded.join(', '));
+      sharp({create:{width:64,height:48,channels:4,background:{r:255,g:0,b:0,alpha:0.5}}}).png().toBuffer()
+        .then(async png => {
+          const webp = await sharp(png).resize(32).webp({quality:90}).toBuffer({resolveWithObject:true});
+          assert.equal(webp.info.format, 'webp');
+          assert.equal(webp.info.width, 32);
+          assert.equal(webp.info.height, 24);
+          const back = await sharp(webp.data).png().toBuffer();
+          const metadata = await sharp(back).metadata();
+          assert.equal(metadata.format, 'png');
+          assert.equal(metadata.width, 32);
+          console.log('Packaged WebAssembly sharp passed: ' + process.platform + ' ' + process.arch);
+        }).catch(error => { console.error(error); process.exitCode = 1; });
+    `,
+      asar,
+      NATIVE_LINUX_BINARY.source
+    ],
+    {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      encoding: 'utf8',
+      timeout: 60_000
+    }
+  )
+  console.log(wasmOutput.trim())
+}
 console.log(`Packaged app version verified: ${version}`)
