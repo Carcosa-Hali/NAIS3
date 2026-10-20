@@ -168,7 +168,9 @@ describe('sharp WebAssembly build', () => {
   // The packaged-app smoke test repeats the loader's hook in a plain script.
   it('hides the same binaries in the packaged-app smoke test', () => {
     const script = readFileSync('scripts/verify-packaged-app.mjs', 'utf8')
-    expect(script).toContain(`const NATIVE_LINUX_BINARY = /${NATIVE_LINUX_BINARY.source}/\n`)
+    // Windows checkouts may use CRLF line endings.
+    const copy = script.match(/^const NATIVE_LINUX_BINARY = \/(.+)\/\r?$/m)?.[1]
+    expect(copy).toBe(NATIVE_LINUX_BINARY.source)
   })
 
   it('loads and processes images', async () => {
