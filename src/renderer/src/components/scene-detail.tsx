@@ -415,7 +415,7 @@ function StreamingFrame({ streaming }: { streaming: boolean }): React.JSX.Elemen
     <img src={`data:image/png;base64,${frame}`} className="h-full w-full object-cover" alt="" />
   ) : (
     <div className="grid h-full w-full place-items-center">
-      <Loader2 size={26} className="animate-spin text-accent" />
+      <Loader2 size={26} className="animate-spin text-accent-ink" />
     </div>
   )
 }
