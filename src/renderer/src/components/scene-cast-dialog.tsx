@@ -303,7 +303,7 @@ function CastRow({
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 shrink-0 p-0 text-muted hover:text-fg"
+        className="h-7 w-7 shrink-0 p-0 text-muted hover:text-ink"
         title={t('ui.editLoadIntoTheBuilderAbove')}
         onClick={onEdit}
       >
@@ -312,7 +312,7 @@ function CastRow({
       <Button
         size="sm"
         variant="ghost"
-        className="h-7 w-7 shrink-0 p-0 text-danger hover:text-danger"
+        className="h-7 w-7 shrink-0 p-0 text-danger-ink hover:text-danger-ink"
         title={t('ui.deleteCastItsQueuesAreAlsoExcludedFromRuns')}
         onClick={onRemove}
       >
@@ -377,7 +377,7 @@ function CharacterChecklist({
                 <span
                   className={cn(
                     'mt-0.5 grid size-3.5 shrink-0 place-items-center rounded border-2',
-                    checked ? 'border-accent bg-accent text-white' : 'border-line'
+                    checked ? 'border-accent bg-accent text-on-accent' : 'border-line'
                   )}
                 >
                   {checked && <span className="text-[8px] leading-none">✓</span>}
@@ -452,7 +452,7 @@ function ThumbGrid({
                 <span
                   className={cn(
                     'absolute bottom-1 right-1 grid size-4 place-items-center rounded border-2 bg-black/45',
-                    checked ? 'border-accent bg-accent text-white' : 'border-white/70'
+                    checked ? 'border-accent bg-accent text-on-accent' : 'border-white/70'
                   )}
                 >
                   {checked && <span className="text-[9px] leading-none text-white">✓</span>}
@@ -493,9 +493,9 @@ function EmptyNote({ text }: { text: string }): React.JSX.Element {
 }
 
 const CHIP_COLORS = {
-  sky: 'bg-sky-500/12 text-sky-500',
-  emerald: 'bg-emerald-500/12 text-emerald-500',
-  violet: 'bg-violet-500/12 text-violet-400'
+  sky: 'bg-hue-sky/12 text-hue-sky',
+  emerald: 'bg-hue-emerald/12 text-hue-emerald',
+  violet: 'bg-hue-violet/12 text-hue-violet'
 } as const
 
 function Chip({

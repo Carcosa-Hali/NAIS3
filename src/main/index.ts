@@ -7,7 +7,7 @@ import icon from '../../resources/icon.png?asset'
 import { closeDb, initDb } from './db'
 import { getSetting } from './db/settings'
 import { preprocessRequest } from './fragments/request'
-import { inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
+import { effectiveSteps, inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
 import { snapNaiResolution } from '../shared/nai-resolution'
 import { fragmentSource } from './fragments/repo'
 import {
@@ -16,7 +16,8 @@ import {
   isUnderImagesRoot,
   saveEphemeralImage,
   saveGeneratedImage,
-  thumbnailByPath
+  thumbnailByPath,
+  thumbnailForUrl
 } from './images/storage'
 import { broadcast, registerIpcHandlers } from './ipc'
 import { resolveInitialLanguage, t } from './i18n'
@@ -24,6 +25,7 @@ import { setupUpdater } from './updater'
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
 import { requestUsesV5Usage, resolveNaiAccountForGeneration } from './nai/account-router'
+import { localPromptMetadata } from './nai/payload'
 import { prepareCharRefs, prepareVibes } from './refs/prepare'
 import { GenerationQueue } from './queue/generation-queue'
 import { getPresetName, getScene } from './scenes/repo'
@@ -107,6 +109,18 @@ app.whenReady().then(() => {
 
   protocol.handle('nais-image', (request) => {
     const url = new URL(request.url)
+    // Stored webp thumbnails by row id — list IPC responses carry these URLs instead of base64
+    if (url.searchParams.has('thumb')) {
+      const thumb = thumbnailForUrl(url)
+      if (!thumb) return new Response('not found', { status: 404 })
+      // URL carries a content version (created_at + size), so the bytes behind it never change
+      return new Response(new Uint8Array(thumb), {
+        headers: {
+          'content-type': 'image/webp',
+          'cache-control': 'max-age=31536000, immutable'
+        }
+      })
+    }
     const filePath = decodeURIComponent(url.searchParams.get('path') ?? '')
     // 자동저장 OFF 임시 이미지 — 메모리 원본, 만료됐으면 DB 썸네일로 폴백
     if (isMemoryPath(filePath)) {
@@ -234,7 +248,7 @@ app.whenReady().then(() => {
             broadcast('generation:progress', {
               id,
               stepIx,
-              totalSteps: request.steps,
+              totalSteps: effectiveSteps(request.model, request.steps),
               previewPng: preview?.toString('base64')
             })
           },
@@ -242,14 +256,7 @@ app.whenReady().then(() => {
         )
 
     const scene = request.sceneId ? getScene(request.sceneId) : null
-    const localMetadata = request.promptParts
-      ? {
-          promptParts: {
-            ...request.promptParts,
-            negative: request.negativePrompt
-          }
-        }
-      : undefined
+    const localMetadata = localPromptMetadata(request)
 
     // 자동저장 OFF: 메인 생성은 파일로 저장하지 않는다 — 원본은 메모리(최근 20장)에만,
     // 히스토리에는 썸네일 행으로 남는다 (NAIS2 방식). 씬 생성은 항상 씬 폴더에 저장.

@@ -860,7 +860,7 @@ function AccountSection(): React.JSX.Element {
         </Button>
       </div>
       {status === 'ok' && <span className="text-[12px] text-accent">{message}</span>}
-      {status === 'fail' && <span className="text-[12px] text-danger">{message}</span>}
+      {status === 'fail' && <span className="text-[12px] text-danger-ink">{message}</span>}
 
       <div className="min-w-0 space-y-1.5">
         {accounts.length === 0 ? (
@@ -924,7 +924,7 @@ function AccountSection(): React.JSX.Element {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="hover:text-danger"
+                  className="hover:text-danger-ink"
                   disabled={busyId !== null}
                   title={t('ui.deleteAccount')}
                   onClick={() => void removeAccount(account)}
@@ -943,7 +943,7 @@ function AccountSection(): React.JSX.Element {
             <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
               <BatteryCharging
                 size={13}
-                className={opusUsage?.isNegative ? 'text-danger' : 'text-accent'}
+                className={opusUsage?.isNegative ? 'text-danger-ink' : 'text-accent'}
               />
               {t('ui.v5Usage')}
             </p>
@@ -987,7 +987,7 @@ function AccountSection(): React.JSX.Element {
       {/* Anlas 사용량 — 잔액 스냅샷 간 감소분 합산 */}
       <div className="min-w-0 rounded-lg border border-line bg-surface-2/50 p-3">
         <p className="mb-2 flex items-center gap-1.5 text-[12.5px] font-medium text-ink">
-          <Coins size={13} className="text-[#c9a34f]" /> Anlas
+          <Coins size={13} className="text-anlas" /> Anlas
         </p>
         <div className="grid grid-cols-3 gap-2 text-center">
           <div>

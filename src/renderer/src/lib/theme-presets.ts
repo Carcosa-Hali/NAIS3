@@ -1,4 +1,7 @@
-import { mixHex } from './color'
+import { contrastRatio, ensureContrast, mixHex, readableOn } from './color'
+
+/** Strongest status chip tint behind *-ink text (bg-danger/15, bg-success/15) */
+export const STATUS_CHIP_ALPHA = 0.15
 
 export type ThemeMode = 'dark' | 'light'
 
@@ -26,17 +29,44 @@ export function buildWhimsTokens(palette: Palette, mode: ThemeMode): Record<stri
   const dark = mode === 'dark'
   const m = (amount: number): string => mixHex(palette.neutral, palette.ink, amount)
   const dim = (amount: number): string => mixHex(palette.ink, palette.neutral, amount)
+  const surface = m(dark ? 0.045 : 0.035)
+  const surface2 = m(dark ? 0.095 : 0.08)
+  // Status colors come in two tokens: the fill (--danger etc.) keeps the palette color so
+  // filled buttons and badges keep their hue, and the ink (--danger-ink etc.) is the text/icon
+  // color, nudged to 4.5:1 on every surface and on 15% chips of the fill (bg-danger/15).
+  // Low-contrast themes whose body text (ink) is already below 4.5:1 only require ink's level.
+  // Only lightness is nudged, toward white/black rather than ink, to preserve the hue.
+  const surfaces = [palette.neutral, surface, surface2]
+  const inkContrast = Math.min(...surfaces.map((bg) => contrastRatio(palette.ink, bg)))
+  const target = Math.min(4.5, inkContrast)
+  const readable = (fill: string): string =>
+    ensureContrast(
+      fill,
+      [...surfaces, ...surfaces.map((bg) => mixHex(bg, fill, STATUS_CHIP_ALPHA))],
+      dark ? '#ffffff' : '#000000',
+      target
+    )
 
   return {
     '--paper': palette.neutral,
-    '--surface': m(dark ? 0.045 : 0.035),
-    '--surface-2': m(dark ? 0.095 : 0.08),
+    '--surface': surface,
+    '--surface-2': surface2,
     '--ink': palette.ink,
     '--muted': dim(dark ? 0.42 : 0.46),
     '--faint': dim(dark ? 0.62 : 0.58),
     '--line': m(dark ? 0.14 : 0.16),
     '--accent': palette.primary,
     '--accent-soft': `color-mix(in srgb, ${palette.primary} ${dark ? 18 : 13}%, transparent)`,
+    '--on-accent': readableOn(palette.primary),
+    '--danger': palette.error,
+    '--on-danger': readableOn(palette.error),
+    '--danger-ink': readable(palette.error),
+    '--success': palette.success,
+    '--success-ink': readable(palette.success),
+    '--warning': palette.warning,
+    '--warning-ink': readable(palette.warning),
+    '--info': palette.info,
+    '--info-ink': readable(palette.info),
     '--dialogue': palette.primary,
     '--dialogue-bg': `color-mix(in srgb, ${palette.primary} 16%, transparent)`,
     '--quote': palette.warning,
