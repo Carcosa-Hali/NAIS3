@@ -344,7 +344,8 @@ export function PromptPanel(): React.JSX.Element {
               negative
               className="min-h-0 flex-1"
               value={request.negativePrompt}
-              tokensOverride={tokenTotals.neg}
+              // Medium effort는 사용자 UC를 보내지 않으므로 토큰 수·한도 경고도 숨김
+              tokensOverride={isMediumEffortModel(request.model) ? null : tokenTotals.neg}
               tokenLimit={tokenLimit}
               placeholder={t('ui.appendedAfterTheUcPreset')}
               onValueChange={(v) => patch({ negativePrompt: v })}

@@ -24,6 +24,7 @@ import { setupUpdater } from './updater'
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
 import { requestUsesV5Usage, resolveNaiAccountForGeneration } from './nai/account-router'
+import { localPromptMetadata } from './nai/payload'
 import { prepareCharRefs, prepareVibes } from './refs/prepare'
 import { GenerationQueue } from './queue/generation-queue'
 import { getPresetName, getScene } from './scenes/repo'
@@ -242,14 +243,7 @@ app.whenReady().then(() => {
         )
 
     const scene = request.sceneId ? getScene(request.sceneId) : null
-    const localMetadata = request.promptParts
-      ? {
-          promptParts: {
-            ...request.promptParts,
-            negative: request.negativePrompt
-          }
-        }
-      : undefined
+    const localMetadata = localPromptMetadata(request)
 
     // 자동저장 OFF: 메인 생성은 파일로 저장하지 않는다 — 원본은 메모리(최근 20장)에만,
     // 히스토리에는 썸네일 행으로 남는다 (NAIS2 방식). 씬 생성은 항상 씬 폴더에 저장.

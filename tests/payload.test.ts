@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { GenerationRequest, UcPresetIndex } from '../src/shared/types'
 import {
   buildGenerateImagePayload,
+  localPromptMetadata,
   mergeUcPreset,
   removeComments,
   varietySigma,
@@ -562,5 +563,30 @@ describe('V5 Full Medium effort payload (novelai.net 번들 2026-10-09 대조)',
     expect(p.action).toBe('infill')
     expect(p.parameters.steps).toBe(14)
     expect(p.parameters).not.toHaveProperty('cfg_rescale')
+  })
+})
+
+describe('localPromptMetadata', () => {
+  const parts = { base: '1girl', additional: 'smile', detail: '' }
+
+  it('records the negative that is actually sent', () => {
+    expect(
+      localPromptMetadata({ ...baseRequest, negativePrompt: 'hat', promptParts: parts })
+    ).toEqual({ promptParts: { ...parts, negative: 'hat' } })
+  })
+
+  it('records an empty negative at Medium effort, where the user UC is not sent', () => {
+    expect(
+      localPromptMetadata({
+        ...baseRequest,
+        model: 'nai-diffusion-5-full-medium',
+        negativePrompt: 'hat',
+        promptParts: parts
+      })
+    ).toEqual({ promptParts: { ...parts, negative: '' } })
+  })
+
+  it('returns undefined without split prompt parts', () => {
+    expect(localPromptMetadata({ ...baseRequest, promptParts: undefined })).toBeUndefined()
   })
 })

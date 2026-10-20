@@ -184,7 +184,7 @@ export function ParamsDialog({
           <Row label={medium ? `Rescale —` : `Rescale ${request.cfgRescale}`}>
             <Slider
               className="w-52"
-              aria-label={`Rescale ${request.cfgRescale}`}
+              aria-label={medium ? 'Rescale' : `Rescale ${request.cfgRescale}`}
               title={medium ? t('ui.unavailableAtMediumEffort') : undefined}
               disabled={medium}
               min={0}

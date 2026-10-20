@@ -138,6 +138,25 @@ export interface BuildOptions {
   transparentBackground?: boolean
 }
 
+/**
+ * 저장 이미지의 로컬 메타데이터(3분할 프롬프트 + 네거티브).
+ * Medium effort는 사용자 UC를 보내지 않으므로 네거티브도 빈 값으로 기록한다 —
+ * 실제로 보내지 않은 UC가 메타데이터 적용 시 복원되지 않도록.
+ */
+export function localPromptMetadata(
+  req: GenerationRequest
+):
+  | { promptParts: NonNullable<GenerationRequest['promptParts']> & { negative: string } }
+  | undefined {
+  if (!req.promptParts) return undefined
+  return {
+    promptParts: {
+      ...req.promptParts,
+      negative: isMediumEffortModel(req.model) ? '' : req.negativePrompt
+    }
+  }
+}
+
 export function buildGenerateImagePayload(
   req: GenerationRequest,
   opts: BuildOptions = {}

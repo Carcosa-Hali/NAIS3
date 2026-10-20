@@ -1,7 +1,7 @@
 import { ArrowLeft, Loader2, Minus, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '@shared/types'
-import { promptTokenLimit } from '@shared/nai-models'
+import { isMediumEffortModel, promptTokenLimit } from '@shared/nai-models'
 import { imageUrl } from '../lib/constants'
 import { ResolutionPicker } from './resolution-picker'
 import { useGenerationStore } from '../stores/generation-store'
@@ -231,12 +231,18 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             tokenLimit={tokenLimit}
             className="h-32 max-h-[520px] min-h-24 resize-y"
           />
+          {isMediumEffortModel(model) && (
+            // Medium effort는 씬 네거티브도 보내지 않는다
+            <p className="text-[11.5px] leading-snug text-faint">
+              {t('ui.negativeUnusedAtMediumEffort')}
+            </p>
+          )}
           <PromptEditor
             value={scene.negativePrompt}
             onValueChange={(v) => void update(scene.id, { negativePrompt: v })}
             placeholder={t('ui.sceneNegativePrompt')}
             negative
-            tokensOverride={sceneTokens.neg}
+            tokensOverride={isMediumEffortModel(model) ? null : sceneTokens.neg}
             tokenLimit={tokenLimit}
             className="h-20 max-h-96 min-h-16 resize-y"
           />
