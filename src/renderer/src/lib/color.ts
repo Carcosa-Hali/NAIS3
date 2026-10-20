@@ -4,20 +4,29 @@ interface Rgb {
   b: number
 }
 
-const RGB_FN = /^rgb\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*\)$/
+const NUM = String.raw`(\d+(?:\.\d+)?(?:e[+-]?\d+)?)`
+const RGB_FN = new RegExp(String.raw`^rgb\(\s*${NUM}[\s,]+${NUM}[\s,]+${NUM}\s*\)$`, 'i')
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i
 
-function parseHex(hex: string): Rgb {
-  const fn = RGB_FN.exec(hex.trim())
+/**
+ * Parses #rgb, #rrggbb, #rrggbbaa (alpha ignored) or rgb(r g b) as produced by composite.
+ * Anything else (oklch(), named colors, typos) throws, so a contrast check can never run on a
+ * silently substituted black.
+ */
+function parseHex(color: string): Rgb {
+  const value = color.trim()
+  const fn = RGB_FN.exec(value)
   if (fn) return { r: Number(fn[1]), g: Number(fn[2]), b: Number(fn[3]) }
-  let h = hex.trim().replace(/^#/, '')
-  if (h.length === 3)
-    h = h
-      .split('')
-      .map((c) => c + c)
-      .join('')
-  if (h.length === 8) h = h.slice(0, 6)
-  const n = parseInt(h.padEnd(6, '0').slice(0, 6), 16)
-  if (Number.isNaN(n)) return { r: 0, g: 0, b: 0 }
+  const hex = HEX.exec(value)?.[1]
+  if (!hex) throw new Error(`Unsupported color: ${color}`)
+  const h =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : hex.slice(0, 6)
+  const n = parseInt(h, 16)
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
 }
 

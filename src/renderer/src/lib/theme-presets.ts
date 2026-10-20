@@ -83,39 +83,35 @@ export function buildWhimsTokens(palette: Palette, mode: ThemeMode): Record<stri
   const surface2 = m(dark ? 0.095 : 0.08)
   const surfaces = [palette.neutral, surface, surface2]
   const toward = dark ? '#ffffff' : '#000000'
-  // Body text gets 7:1 (AAA) on every surface so that themes hovering near 4.5:1, like Solarized,
-  // still keep 4.5:1 once highlights or selection backgrounds sit behind the text.
-  const ink = ensureContrast(palette.ink, surfaces, toward, 7)
-  const dim = (amount: number): string => mixHex(ink, palette.neutral, amount)
   const target = 4.5
 
-  // Secondary text. muted meets body-level 4.5:1, so must-read hints like placeholders use it.
-  // faint is for extras like shortcut hints and disabled icons, so to keep the hierarchy
-  // it only meets 3:1 (the UI component threshold).
-  const mutedBase = ensureContrast(dim(dark ? 0.42 : 0.46), surfaces, ink, target)
-
-  // Selected-row background (accent-soft). To keep body and muted text readable on it,
-  // first lower its strength (for muted, only down to 10% light / 14% dark);
-  // if that is still not enough, muted itself is nudged below.
+  // Selected-row background (accent-soft). It keeps its default strength (13% light / 18% dark)
+  // and is only weakened when the preset's body text fails 4.5:1 on it; muted and faint are
+  // nudged to fit the selection instead of the other way around.
   const accent = palette.primary
   const passesOnSoft = (fg: string, pct: number): boolean =>
     surfaces.every((bg) => contrastRatio(fg, composite(bg, accent, pct / 100)) >= target)
   let softPct = dark ? 18 : 13
-  while (
-    (softPct > 6 && !passesOnSoft(ink, softPct)) ||
-    (softPct > (dark ? 14 : 10) && !passesOnSoft(mutedBase, softPct))
-  )
-    softPct--
+  while (softPct > 6 && !passesOnSoft(palette.ink, softPct)) softPct--
   // Every background text sits on: the three surfaces plus the selection over each
   const textBgs = [...surfaces, ...surfaces.map((bg) => composite(bg, accent, softPct / 100))]
-  const muted = ensureContrast(mutedBase, textBgs, ink, target)
+
+  // Body text keeps the preset's own ink and is only nudged where it falls below 4.5:1 (AA)
+  const ink = ensureContrast(palette.ink, textBgs, toward, target)
+  const dim = (amount: number): string => mixHex(ink, palette.neutral, amount)
+
+  // Secondary text. muted meets body-level 4.5:1, so must-read hints like placeholders use it.
+  // faint is for extras like shortcut hints and disabled icons, so to keep the hierarchy
+  // it only meets 3:1 (the UI component threshold).
+  const muted = ensureContrast(dim(dark ? 0.42 : 0.46), textBgs, ink, target)
   const faint = ensureContrast(dim(dark ? 0.62 : 0.58), textBgs, ink, 3)
 
   // Accent fills (bg-accent) keep the palette color; only accent text and icons
   // (text-accent-ink) are nudged.
   // Accent text sits on every background and on accent chips over them
   // (bg-accent/10–15, including icon boxes on selected rows).
-  const chipBgs = [...surfaces, textBgs[3], textBgs[4]]
+  const [, , , selectionOverPaper, selectionOverSurface] = textBgs
+  const chipBgs = [...surfaces, selectionOverPaper, selectionOverSurface]
   const accentChips = chipBgs.map((bg) => composite(bg, accent, 0.15))
   const accentInk = ensureContrast(accent, [...textBgs, ...accentChips], toward, target)
 

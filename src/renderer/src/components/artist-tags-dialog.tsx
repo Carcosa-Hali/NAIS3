@@ -96,7 +96,7 @@ export function ArtistTagsDialog(): React.JSX.Element {
                       className={cn(
                         'flex w-full shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] transition-colors',
                         off
-                          ? 'border-line text-faint opacity-55 hover:opacity-80'
+                          ? 'border-line text-faint hover:text-muted'
                           : 'border-accent/50 bg-accent/10 text-ink'
                       )}
                     >

@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 import { describe, expect, it } from 'vitest'
-import { WHITE_ON_FILL_MIN } from '../src/renderer/src/lib/color'
+import { contrastRatio as libContrastRatio, WHITE_ON_FILL_MIN } from '../src/renderer/src/lib/color'
 import { MARK_ALPHA } from '../src/renderer/src/lib/prompt-weights'
 import {
   buildWhimsTokens,
@@ -17,7 +17,9 @@ const CASES = THEME_PRESETS.flatMap((preset) =>
   (['light', 'dark'] as ThemeMode[]).flatMap((mode) => {
     const palette = preset[mode]
     if (!palette) return []
-    return [{ name: `${preset.id}/${mode}`, tokens: buildWhimsTokens(palette, mode) }]
+    return [
+      { name: `${preset.id}/${mode}`, mode, palette, tokens: buildWhimsTokens(palette, mode) }
+    ]
   })
 )
 
@@ -73,16 +75,26 @@ function minContrast(fg: Color, bgs: Color[]): number {
 /** Only a tiny epsilon for float noise, so values like 4.4999… still fail */
 const EPS = 1e-9
 
-describe.each(CASES)('$name 대비', ({ tokens }) => {
+describe.each(CASES)('$name 대비', ({ mode, palette, tokens }) => {
   const ink = tokens['--ink']
   const surfaces = surfacesOf(tokens)
   const target = 4.5
 
   const textBgs = textBgsOf(tokens)
 
-  it('본문 글자는 모든 면에서 7:1, 선택 배경 위에서도 4.5:1', () => {
-    expect(minContrast(ink, surfaces)).toBeGreaterThanOrEqual(7 - EPS)
+  it('본문 글자는 선택 배경을 포함한 모든 배경에서 4.5:1', () => {
     expect(minContrast(ink, textBgs)).toBeGreaterThanOrEqual(target - EPS)
+  })
+
+  it('프리셋 원본 ink가 이미 4.5:1이면 그대로 둔다', () => {
+    if (minContrast(palette.ink, textBgs) >= target) expect(ink).toBe(palette.ink)
+  })
+
+  it('선택 배경은 원본 ink가 기본 강도에서 통과하면 약해지지 않는다', () => {
+    const defaultPct = mode === 'dark' ? 18 : 13
+    const atDefault = surfaces.map((bg) => mixHex(bg, tokens['--accent'], defaultPct / 100))
+    if (minContrast(palette.ink, atDefault) >= target)
+      expect(tokens['--accent-soft']).toContain(` ${defaultPct}%`)
   })
 
   it('muted는 4.5:1, faint는 3:1 (선택 배경 포함)', () => {
@@ -207,4 +219,30 @@ describe('main.css 기본값', () => {
 /** Original 400-tone icons on image badges (.on-image, bg-black/80) — 3:1 even over white */
 it.each(Object.entries(HUE_BASE))('.on-image hue-%s', (_, [, tone]) => {
   expect(contrastRatio(tone, mixHex('#ffffff', '#000000', 0.8))).toBeGreaterThanOrEqual(3 - EPS)
+})
+
+it('기본 NAIS3 선택 배경은 라이트 13% / 다크 18%를 유지한다', () => {
+  const nais3 = THEME_PRESETS.find((preset) => preset.id === 'nais3')!
+  expect(buildWhimsTokens(nais3.light!, 'light')['--accent-soft']).toContain(' 13%')
+  expect(buildWhimsTokens(nais3.dark!, 'dark')['--accent-soft']).toContain(' 18%')
+})
+
+it('지원하지 않는 색 형식은 조용히 검정으로 바꾸지 않고 throw한다', () => {
+  for (const bad of ['oklch(70% 0.1 290)', 'red', '#12', '#ggg', 'rgba(0, 0, 0, 0.5)'])
+    expect(() => libContrastRatio(bad, '#ffffff')).toThrow(/Unsupported color/)
+  expect(libContrastRatio('rgb(0 0 0)', '#fff')).toBeCloseTo(21)
+  expect(libContrastRatio('rgb(1.5e-7 0 0)', '#ffffff')).toBeCloseTo(21)
+})
+
+/** scene-cast-dialog chips must match the alpha and hues buildWhimsTokens checks */
+it('CHIP_COLORS는 HUE_CHIP_TEXT/HUE_CHIP_ALPHA와 일치한다', () => {
+  const source = readFileSync('src/renderer/src/components/scene-cast-dialog.tsx', 'utf8')
+  const block = /const CHIP_COLORS = \{([^}]*)\}/.exec(source)?.[1] ?? ''
+  const entries = [...block.matchAll(/(\w+): '([^']*)'/g)]
+  expect(entries.map(([, name]) => name).sort()).toEqual([...HUE_CHIP_TEXT].sort())
+  for (const [, , classes] of entries) {
+    const alphas = [...classes.matchAll(/bg-hue-\w+\/(\d+)/g)].map((m) => Number(m[1]) / 100)
+    expect(alphas.length).toBeGreaterThan(0)
+    expect(Math.max(...alphas)).toBeLessThanOrEqual(HUE_CHIP_ALPHA)
+  }
 })

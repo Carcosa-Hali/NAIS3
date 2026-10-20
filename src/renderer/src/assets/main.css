@@ -16,11 +16,11 @@
   --surface: #f2f2f2;
   --surface-2: #e8e8e8;
   --ink: #19191b;
-  --muted: #5f5f60;
-  --faint: #7b7b7c;
+  --muted: #5d5d5e;
+  --faint: #757575;
   --line: #d6d6d6;
   --accent: #c2610a;
-  --accent-soft: rgba(194, 97, 10, 0.1);
+  --accent-soft: rgba(194, 97, 10, 0.13);
   --accent-ink: #884407;
   /* Status fills keep the palette color; *-ink (text/icons), on-* and hover colors are
      recomputed for contrast by buildWhimsTokens per preset */
@@ -28,12 +28,12 @@
   --accent-hover: #af5709;
   --danger: #a85a52;
   --on-danger: #ffffff;
-  --danger-ink: #864842;
+  --danger-ink: #7e443e;
   --danger-hover: #97514a;
   --success: #4c7f5c;
   --success-ink: #395f45;
   --warning: #8f7638;
-  --warning-ink: #6b592a;
+  --warning-ink: #645327;
   --info: #4f7189;
   --info-ink: #3f5a6e;
 
@@ -92,24 +92,24 @@
   --surface: #19191a;
   --surface-2: #242425;
   --ink: #e9e9ea;
-  --muted: #9f9fa0;
-  --faint: #848485;
+  --muted: #a9a9aa;
+  --faint: #8b8b8c;
   --line: #2e2e2f;
   --accent: #eb9550;
-  --accent-soft: rgba(235, 149, 80, 0.14);
-  --accent-ink: #ec9a59;
+  --accent-soft: rgba(235, 149, 80, 0.18);
+  --accent-ink: #eda062;
   --on-accent: #000000;
   --accent-hover: #eda062;
   --danger: #c47a72;
   --on-danger: #ffffff;
-  --danger-ink: #d39b95;
+  --danger-ink: #d6a29c;
   --danger-hover: #b06e67;
   --success: #84ac8e;
-  --success-ink: #90b499;
+  --success-ink: #96b89f;
   --warning: #c4b184;
   --warning-ink: #c4b184;
   --info: #8fa4b5;
-  --info-ink: #9aadbc;
+  --info-ink: #a0b2c0;
   --search-hit: #66591e;
   --search-hit-current: #8c5b20;
   --anlas: #c9a34f;
