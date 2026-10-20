@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom'
 import type { CharacterCard } from '@shared/types'
 import {
   canEnableAnotherCharacter,
+  isMediumEffortModel,
   isV5Model,
   modelCapabilities,
   promptTokenLimit
@@ -405,11 +406,18 @@ export function CharacterOverlay(): React.JSX.Element {
         placeholder="girl, ..."
         onValueChange={(v) => updateCard(char.id, { prompt: v })}
       />
+      {isMediumEffortModel(model) && (
+        // 칸에 글자가 있으면 placeholder가 안 보이므로 안내를 항상 표시
+        <p className="text-[11.5px] leading-snug text-faint">
+          {t('ui.negativeUnusedAtMediumEffort')}
+        </p>
+      )}
       <PromptEditor
         negative
         className="h-24 max-h-96 min-h-14 resize-y bg-surface-2"
         value={char.negativePrompt}
-        tokenModel={model}
+        // Medium effort는 캐릭터 UC를 보내지 않으므로 토큰 수도 세지 않음
+        tokenModel={isMediumEffortModel(model) ? undefined : model}
         tokenLimit={tokenLimit}
         placeholder={t('ui.characterNegative')}
         onValueChange={(v) => updateCard(char.id, { negativePrompt: v })}
