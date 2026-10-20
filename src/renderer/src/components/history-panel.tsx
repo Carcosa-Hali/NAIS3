@@ -49,7 +49,7 @@ export function HistoryPanel(): React.JSX.Element {
         <span className="ml-auto font-mono text-[11px] text-faint">{historyTotal}</span>
         {historyTotal > 0 && (
           <button
-            className="no-drag grid size-6 place-items-center rounded text-faint transition-colors hover:text-danger"
+            className="no-drag grid size-6 place-items-center rounded text-faint transition-colors hover:text-danger-ink"
             title={t('ui.clearAll')}
             onClick={() => void clearAll()}
           >
@@ -99,7 +99,7 @@ export function HistoryPanel(): React.JSX.Element {
                   {/* 호버 삭제 — 기록만 삭제 (파일 보존) */}
                   <span
                     role="button"
-                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur transition hover:bg-danger group-hover:opacity-100"
+                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur transition hover:bg-danger hover:text-on-danger group-hover:opacity-100"
                     title={t('ui.removeFromHistoryFilePreserved')}
                     onClick={(e) => {
                       e.stopPropagation()

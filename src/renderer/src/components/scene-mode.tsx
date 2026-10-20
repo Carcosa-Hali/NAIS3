@@ -128,7 +128,7 @@ function PresetDropdown(): React.JSX.Element {
                     <span className="truncate">{p.name}</span>
                   </div>
                   <button
-                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-fg group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-ink group-hover:opacity-100"
                     onClick={async () => {
                       const name = await askText(t('ui.presetName'), p.name)
                       if (name) void renamePreset(p.id, name)
@@ -140,7 +140,7 @@ function PresetDropdown(): React.JSX.Element {
                   </button>
                   {presets.length > 1 && (
                     <button
-                      className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger group-hover:opacity-100"
+                      className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger-ink group-hover:opacity-100"
                       onClick={async () => {
                         if (
                           await askConfirm(t('ui.deletePreset'), {
@@ -262,7 +262,7 @@ function CastSelector(): React.JSX.Element {
                     </span>
                   </div>
                   <button
-                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-faint opacity-0 hover:text-danger-ink group-hover:opacity-100"
                     onClick={async () => {
                       if (
                         await askConfirm(t('ui.deleteCast'), {
@@ -323,7 +323,7 @@ function IconBtn({
           aria-pressed={active === undefined ? undefined : active}
           className={cn(
             'grid size-8 place-items-center rounded-md transition-colors',
-            active ? 'bg-accent text-white' : 'text-muted hover:bg-surface-2 hover:text-fg'
+            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-ink'
           )}
         >
           {icon}
@@ -614,7 +614,7 @@ function BulkBar(): React.JSX.Element {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface-2 px-3 py-2 text-[13px]">
-      <span className="font-medium text-fg">{t('ui.valueSelected', n)}</span>
+      <span className="font-medium text-ink">{t('ui.valueSelected', n)}</span>
       <Button size="sm" variant="ghost" onClick={selectAll}>
         {t('ui.selectAll')}
       </Button>
@@ -627,7 +627,7 @@ function BulkBar(): React.JSX.Element {
       <div className="flex items-center gap-0.5 rounded-full border border-line bg-paper p-0.5">
         <span className="px-1.5 text-[12px] text-muted">{t('ui.queue')}</span>
         <button
-          className="grid size-5 place-items-center rounded-full text-fg hover:bg-surface-2 disabled:opacity-30"
+          className="grid size-5 place-items-center rounded-full text-ink hover:bg-surface-2 disabled:opacity-30"
           disabled={disabled}
           title={reserveTip(-1)}
           aria-label={reserveTip(-1)}
@@ -636,7 +636,7 @@ function BulkBar(): React.JSX.Element {
           <Minus size={13} />
         </button>
         <button
-          className="grid size-5 place-items-center rounded-full text-fg hover:bg-surface-2 disabled:opacity-30"
+          className="grid size-5 place-items-center rounded-full text-ink hover:bg-surface-2 disabled:opacity-30"
           disabled={disabled}
           title={reserveTip(1)}
           aria-label={reserveTip(1)}
@@ -724,7 +724,7 @@ function BulkBar(): React.JSX.Element {
       <Button
         size="sm"
         variant="ghost"
-        className="text-danger"
+        className="text-danger-ink"
         disabled={disabled}
         onClick={async () => {
           if (
@@ -788,7 +788,7 @@ function reserveBadges(
   }
   for (const [id, n] of Object.entries(scene.reserves)) {
     if (id !== '' && n > 0 && !casts.some((c) => c.id === id))
-      out.push({ key: id, name: '', count: n, color: '#6b7280', deleted: true })
+      out.push({ key: id, name: '', count: n, color: null, deleted: true })
   }
   return out
 }
@@ -906,8 +906,12 @@ const SceneCard = memo(function SceneCard({
                     <span
                       key={b.key}
                       className={cn(
-                        'grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-[12px] font-bold text-white shadow',
-                        b.color === null && 'bg-danger'
+                        'grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-[12px] font-bold shadow',
+                        b.deleted
+                          ? 'bg-black/60 text-white/80'
+                          : b.color === null
+                            ? 'bg-danger text-on-danger'
+                            : 'text-white'
                       )}
                       style={b.color ? { backgroundColor: b.color } : undefined}
                       title={t('ui.valueValueImages', reserveBadgeLabel(b, t), b.count)}
@@ -934,7 +938,7 @@ const SceneCard = memo(function SceneCard({
             <span
               className={cn(
                 'absolute right-1.5 top-1.5 grid size-5 place-items-center rounded border-2 transition',
-                checked ? 'border-accent bg-accent text-white' : 'border-white/80 bg-black/30'
+                checked ? 'border-accent bg-accent text-on-accent' : 'border-white/80 bg-black/30'
               )}
             >
               {checked && <span className="text-[11px] leading-none">✓</span>}
@@ -1014,7 +1018,7 @@ const SceneCard = memo(function SceneCard({
                   value={ctxCount}
                   className={cn(
                     'min-w-5 rounded-full px-1 text-center text-[12px] font-medium text-white',
-                    !activeCast && ctxCount > 0 && 'bg-danger'
+                    !activeCast && ctxCount > 0 && 'bg-danger text-on-danger'
                   )}
                   style={
                     activeCast && ctxCount > 0 ? { backgroundColor: activeCast.color } : undefined
@@ -1046,7 +1050,7 @@ const SceneCard = memo(function SceneCard({
           <Copy size={13} /> {t('ui.duplicate')}
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => void openFolder()}>
-          <FolderOpen size={13} className="text-amber-400" /> {t('ui.openFolder')}
+          <FolderOpen size={13} className="text-hue-amber" /> {t('ui.openFolder')}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem danger onSelect={() => void removeScene()}>
@@ -1073,7 +1077,7 @@ function MenuItem({
     <button
       className={cn(
         'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-surface-2',
-        danger && 'text-danger'
+        danger && 'text-danger-ink'
       )}
       onClick={onClick}
     >

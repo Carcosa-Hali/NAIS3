@@ -186,7 +186,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             value={scene.reserves[activeCastId] ?? 0}
             className={cn(
               'min-w-6 rounded-full px-1 text-center text-[13px] font-semibold',
-              !activeCast && (scene.reserves[''] ?? 0) > 0 && 'bg-danger text-white'
+              !activeCast && (scene.reserves[''] ?? 0) > 0 && 'bg-danger text-on-danger'
             )}
             style={
               activeCast && (scene.reserves[activeCastId] ?? 0) > 0
@@ -249,7 +249,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
         </div>
 
         <div className="mt-4 mb-2 flex items-center gap-2 text-[12px] text-muted">
-          <span className="font-medium text-fg">{t('ui.generatedImages')}</span>
+          <span className="font-medium text-ink">{t('ui.generatedImages')}</span>
           <span>{t('ui.valueImages', imagesTotal.toLocaleString())}</span>
           <div className="flex-1" />
           {/* 즐겨찾기만 보기 (N4) */}
@@ -257,9 +257,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             onClick={() => setFavoritesOnly(!favoritesOnly)}
             className={cn(
               'flex h-6 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium transition-colors',
-              favoritesOnly
-                ? 'bg-amber-400/90 text-black'
-                : 'bg-surface-2 text-muted hover:text-ink'
+              favoritesOnly ? 'bg-favorite/90 text-black' : 'bg-surface-2 text-muted hover:text-ink'
             )}
             title={t('ui.showFavoritesOnly')}
           >
@@ -282,7 +280,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                 n > 0 ? 'success' : 'info'
               )
             }}
-            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger"
+            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger-ink"
             title={t('ui.deleteAllExceptFavorites')}
           >
             <Trash2 size={12} /> {t('ui.declutter')}
@@ -365,7 +363,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                     className={cn(
                       'absolute left-1 top-1 grid size-6 place-items-center rounded-full backdrop-blur transition',
                       img.favorite
-                        ? 'bg-amber-400/90 text-black'
+                        ? 'bg-favorite/90 text-black'
                         : 'bg-black/40 text-white opacity-0 group-hover:opacity-100'
                     )}
                     onClick={() => void toggleFavorite(img.id)}
@@ -374,7 +372,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                     <Star size={13} fill={img.favorite ? 'currentColor' : 'none'} />
                   </button>
                   <button
-                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition hover:bg-danger group-hover:opacity-100"
+                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition hover:bg-danger hover:text-on-danger group-hover:opacity-100"
                     onClick={() => void deleteImage(img.id)}
                     title={t('ui.delete')}
                   >

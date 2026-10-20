@@ -143,7 +143,7 @@ export function FragmentOverlay(): React.JSX.Element {
         <Button
           size="sm"
           variant="ghost"
-          className="h-8 w-8 p-0 hover:text-danger"
+          className="h-8 w-8 p-0 hover:text-danger-ink"
           title={t('ui.delete')}
           onClick={() => remove(fragment.id)}
         >

@@ -31,3 +31,58 @@ export function mixHex(a: string, b: string, t: number): string {
   const lerp = (x: number, y: number): number => x + (y - x) * t
   return toHex({ r: lerp(ca.r, cb.r), g: lerp(ca.g, cb.g), b: lerp(ca.b, cb.b) })
 }
+
+/** WCAG 2.x relative luminance */
+function luminance(hex: string): number {
+  const { r, g, b } = parseHex(hex)
+  const ch = (v: number): number => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+}
+
+/** WCAG contrast ratio (1–21) */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a)
+  const lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/**
+ * Nudges text color fg toward `toward` until it reaches target contrast on every background.
+ * With tint > 0, it also checks chips tinted with fg itself at that alpha (bg-x/15 etc.).
+ */
+export function ensureContrast(
+  fg: string,
+  backgrounds: string[],
+  toward: string,
+  target = 4.5,
+  tint = 0
+): string {
+  // Integer steps so t reaches exactly 1 (summing 0.05 twenty times overshoots 1 and skips the last step)
+  for (let step = 0; step <= 20; step++) {
+    const candidate = mixHex(fg, toward, step / 20)
+    const bgs =
+      tint > 0
+        ? [...backgrounds, ...backgrounds.map((bg) => mixHex(bg, candidate, tint))]
+        : backgrounds
+    if (bgs.every((bg) => contrastRatio(candidate, bg) >= target)) return candidate
+  }
+  return toward
+}
+
+/**
+ * Contrast white text needs on a fill before it is preferred over black (readableOn).
+ * 3:1 (large text / UI) keeps white labels on mid-tone accents like NAIS3 #c2610a, at the cost
+ * of WCAG AA for 13px button text there (about 4.0–4.2:1 instead of 4.5:1).
+ */
+export const WHITE_ON_FILL_MIN = 3
+
+/** Text color for a filled background bg — white when it reaches WHITE_ON_FILL_MIN, else black */
+export function readableOn(bg: string): string {
+  return contrastRatio(bg, '#ffffff') >= WHITE_ON_FILL_MIN ? '#ffffff' : '#000000'
+}
+
+/** Inpaint mask display color (R, G, B). Canvas can't read CSS variables, so it lives in TS. */
+export const MASK_PAINT_RGB = '233, 94, 80'

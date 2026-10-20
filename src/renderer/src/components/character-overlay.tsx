@@ -266,7 +266,7 @@ export function CharacterOverlay(): React.JSX.Element {
         <span
           className={cn(
             'grid size-4 shrink-0 place-items-center rounded border-2',
-            checked ? 'border-accent bg-accent text-white' : 'border-line'
+            checked ? 'border-accent bg-accent text-on-accent' : 'border-line'
           )}
         >
           {checked && <span className="text-[9px] leading-none">✓</span>}
@@ -371,7 +371,7 @@ export function CharacterOverlay(): React.JSX.Element {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 gap-1 px-2 text-[12px] hover:text-danger"
+            className="h-8 gap-1 px-2 text-[12px] hover:text-danger-ink"
             title={t('ui.removeCharacterThumbnail')}
             onClick={() => void clearThumbnail(char.id)}
           >
@@ -390,7 +390,7 @@ export function CharacterOverlay(): React.JSX.Element {
         <Button
           size="sm"
           variant="ghost"
-          className="h-8 w-8 p-0 hover:text-danger"
+          className="h-8 w-8 p-0 hover:text-danger-ink"
           title={t('ui.deleteCharacter')}
           onClick={() => removeCard(char.id)}
         >
@@ -443,7 +443,7 @@ export function CharacterOverlay(): React.JSX.Element {
             className={cn(
               'rounded-full px-1.5 font-mono text-[10.5px]',
               enabledCount >= maxCharacters
-                ? 'bg-danger/15 text-danger'
+                ? 'bg-danger/15 text-danger-ink'
                 : 'bg-accent-soft text-accent'
             )}
             title={t('ui.activeCharactersValueValue', enabledCount, maxCharacters)}
@@ -466,7 +466,7 @@ export function CharacterOverlay(): React.JSX.Element {
           <span
             className={cn(
               'font-mono text-[10.5px]',
-              charTokens > tokenLimit ? 'text-danger' : 'text-faint'
+              charTokens > tokenLimit ? 'text-danger-ink' : 'text-faint'
             )}
             title={t('ui.basePromptCharacterPromptsCombinedSharedTokenLimit', tokenLimit)}
           >
@@ -616,7 +616,7 @@ export function CharacterOverlay(): React.JSX.Element {
           <Button
             size="sm"
             variant="ghost"
-            className="gap-1 text-danger hover:text-danger"
+            className="gap-1 text-danger-ink hover:text-danger-ink"
             disabled={selected.size === 0}
             onClick={() => void bulkDelete()}
           >
