@@ -197,6 +197,19 @@ describe('existing workspace migration', () => {
     expect(readdirSync(backups)).toEqual(['pre-migration-v17.db'])
   })
 
+  it('removes snapshot temp files on a start that needs no migration', () => {
+    seedLegacy().close()
+    initDb()
+    closeDb()
+    // 1.0.28 workspaces already at the latest version still carry temp files from killed starts
+    const backups = join(environment.directory, 'backups')
+    const stale = 'pre-migration-v18.db.00000000-0000-0000-0000-000000000000.tmp'
+    writeFileSync(join(backups, stale), 'partial snapshot')
+    writeFileSync(join(backups, `${stale}-journal`), 'journal of the partial snapshot')
+    expect(initDb().version).toBe(migrations.length)
+    expect(readdirSync(backups)).toEqual(['pre-migration-v17.db'])
+  })
+
   it('refuses a database from a newer app version without backing it up', () => {
     const old = seedLegacy()
     old.pragma(`user_version = ${migrations.length + 1}`)

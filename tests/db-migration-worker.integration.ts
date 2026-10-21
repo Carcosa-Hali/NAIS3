@@ -113,6 +113,8 @@ describe('DB migration worker', () => {
       migrated: true,
       opened: [{ language: 'en', pending: true }]
     })
+    // A start that needs no migration still removes temp files left by a killed snapshot.
+    writeFileSync(join(backups(), 'pre-migration-v18.db.stale.tmp'), 'partial snapshot')
     await expect(run()).resolves.toEqual({
       migrated: true,
       opened: [{ language: 'en', pending: false }]

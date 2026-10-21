@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'crypto'
-import { mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
 import { migrations } from './migrations'
 
@@ -53,6 +53,9 @@ export function migrate(db: Database.Database, backupDir: string): void {
   const current = db.pragma('user_version', { simple: true }) as number
   const target = migrations.length
   assertSupportedVersion(current, target)
+  // 마이그레이션이 필요 없는 실행에서도 정리한다 — 1.0.28 첫 실행을 강제 종료하며 쌓인 .tmp는
+  // 이미 v20까지 올라간 DB 옆에 남아 있다
+  removeSnapshotTemps(backupDir)
   if (current === target) return
 
   if (current > 0) {
@@ -105,14 +108,22 @@ export function writeSnapshot(db: Database.Database, destination: string): void 
   }
 }
 
-export function pruneBackups(backupDir: string, keep: number): void {
-  const entries = readdirSync(backupDir)
-  // 스냅샷 도중 강제 종료되면 DB 크기만 한 .tmp(와 그 -journal)가 남는다 — 실행마다 쌓여
-  // 디스크를 채우지 않게 정리
-  for (const f of entries.filter((f) => f.endsWith('.tmp') || f.endsWith('.tmp-journal'))) {
-    rmSync(join(backupDir, f), { force: true })
+/**
+ * 스냅샷 도중 강제 종료되면 DB 크기만 한 .tmp(와 그 -journal)가 남는다 — 실행마다 쌓여
+ * 디스크를 채우지 않게 정리
+ */
+function removeSnapshotTemps(backupDir: string): void {
+  if (!existsSync(backupDir)) return
+  for (const f of readdirSync(backupDir)) {
+    if (f.endsWith('.tmp') || f.endsWith('.tmp-journal'))
+      rmSync(join(backupDir, f), { force: true })
   }
-  const files = entries.filter((f) => f.endsWith('.db')).sort()
+}
+
+export function pruneBackups(backupDir: string, keep: number): void {
+  const files = readdirSync(backupDir)
+    .filter((f) => f.endsWith('.db'))
+    .sort()
   for (const f of files.slice(0, Math.max(0, files.length - keep))) {
     rmSync(join(backupDir, f))
   }
