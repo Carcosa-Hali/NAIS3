@@ -184,6 +184,25 @@ describe('existing workspace migration', () => {
     expect(readdirSync(join(environment.directory, 'backups'))).toEqual(['pre-migration-v17.db'])
   })
 
+  it('removes snapshot temp files left behind by an interrupted launch', () => {
+    seedLegacy().close()
+    const backups = join(environment.directory, 'backups')
+    mkdirSync(backups)
+    const stale = 'pre-migration-v17.db.00000000-0000-0000-0000-000000000000.tmp'
+    writeFileSync(join(backups, stale), 'partial snapshot')
+    initDb()
+    expect(readdirSync(backups)).toEqual(['pre-migration-v17.db'])
+  })
+
+  it('refuses a database from a newer app version without backing it up', () => {
+    const old = seedLegacy()
+    old.pragma(`user_version = ${migrations.length + 1}`)
+    old.close()
+    expect(() => initDb()).toThrow(`DB version ${migrations.length + 1} is newer than app supports`)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(migrations.length + 1)
+    expect(readdirSync(environment.directory)).not.toContain('backups')
+  })
+
   it('does not migrate if the backup directory cannot be created', () => {
     const old = seedLegacy()
     const before = snapshot(old)

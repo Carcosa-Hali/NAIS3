@@ -38,27 +38,39 @@ export function initDb(): { version: number; path: string; isNewDatabase: boolea
 
   const current = db.pragma('user_version', { simple: true }) as number
   const target = migrations.length
+  assertSupportedVersion(current, target)
 
   if (current < target) {
     if (current > 0) {
       backupBeforeMigration(current)
     }
-    for (let v = current; v < target; v++) {
-      const migrate = db.transaction(() => {
-        migrations[v](db!)
-        db!.pragma(`user_version = ${v + 1}`)
-      })
-      migrate()
+    // 버전은 쓰기 잠금(IMMEDIATE)을 잡은 뒤 다시 읽는다 — 같은 DB를 연 다른 프로세스가 먼저
+    // 적용한 마이그레이션을 또 실행해 "index ... already exists"로 실패하지 않도록
+    const migrateNext = db.transaction((): boolean => {
+      const v = db!.pragma('user_version', { simple: true }) as number
+      // 그사이 다른 프로세스가 더 새 버전으로 올렸을 수도 있다 — 첫 확인만으로는 막지 못한다
+      assertSupportedVersion(v, target)
+      if (v === target) return false
+      migrations[v](db!)
+      db!.pragma(`user_version = ${v + 1}`)
+      return true
+    })
+    while (migrateNext.immediate()) {
+      /* 한 버전씩 개별 트랜잭션으로 적용 */
     }
-  } else if (current > target) {
-    // 다운그레이드된 앱이 미래 버전 DB를 여는 상황 — 조용히 진행하면 데이터가 깨진다
-    throw new Error(
-      `DB version ${current} is newer than app supports (${target}). ` +
-        'NAIS3를 최신 버전으로 업데이트하세요.'
-    )
   }
 
   return { version: target, path, isNewDatabase }
+}
+
+function assertSupportedVersion(version: number, target: number): void {
+  // 다운그레이드된 앱이 미래 버전 DB를 여는 상황 — 조용히 진행하면 데이터가 깨진다
+  if (version > target) {
+    throw new Error(
+      `DB version ${version} is newer than app supports (${target}). ` +
+        'NAIS3를 최신 버전으로 업데이트하세요.'
+    )
+  }
 }
 
 function backupBeforeMigration(fromVersion: number): void {
@@ -80,9 +92,12 @@ function writeSnapshot(destination: string): void {
 }
 
 function pruneBackups(backupDir: string, keep: number): void {
-  const files = readdirSync(backupDir)
-    .filter((f) => f.endsWith('.db'))
-    .sort()
+  const entries = readdirSync(backupDir)
+  // 스냅샷 도중 강제 종료되면 DB 크기만 한 .tmp가 남는다 — 실행마다 쌓여 디스크를 채우지 않게 정리
+  for (const f of entries.filter((f) => f.endsWith('.tmp'))) {
+    rmSync(join(backupDir, f), { force: true })
+  }
+  const files = entries.filter((f) => f.endsWith('.db')).sort()
   for (const f of files.slice(0, Math.max(0, files.length - keep))) {
     rmSync(join(backupDir, f))
   }
