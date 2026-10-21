@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3'
+import { spawn } from 'child_process'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { createRequire } from 'module'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -202,6 +204,44 @@ describe('existing workspace migration', () => {
     expect(() => initDb()).toThrow(`DB version ${migrations.length + 1} is newer than app supports`)
     expect(getDb().pragma('user_version', { simple: true })).toBe(migrations.length + 1)
     expect(readdirSync(environment.directory)).not.toContain('backups')
+  })
+
+  it('does not re-run a migration that another launch applied while this one waited', async () => {
+    // 1.0.27 workspace (v18). A second process holds the write lock, applies v19 and commits
+    // after this process has already read user_version 18 — the 1.0.28 double-launch race.
+    const old = seedLegacy()
+    old.transaction(() => {
+      migrations[17](old)
+      old.pragma('user_version = 18')
+    })()
+    old.close()
+    const other = spawn(
+      process.execPath,
+      [
+        '-e',
+        `const db = new (require(process.argv[1]))(process.argv[2], { timeout: 5000 })
+         db.exec('BEGIN IMMEDIATE')
+         console.log('locked')
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)
+         db.exec('CREATE INDEX idx_images_file_path ON images(file_path)')
+         db.pragma('user_version = 19')
+         db.exec('COMMIT')
+         db.close()`,
+        createRequire(import.meta.url).resolve('better-sqlite3'),
+        path()
+      ],
+      { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'inherit'] }
+    )
+    const exited = new Promise((resolve) => other.on('exit', resolve))
+    await new Promise((resolve) => other.stdout.once('data', resolve))
+
+    expect(initDb().version).toBe(migrations.length)
+    expect(await exited).toBe(0)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(migrations.length)
+    const indexes = getDb()
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+      .all('idx_images_file_path')
+    expect(indexes).toHaveLength(1)
   })
 
   it('does not migrate if the backup directory cannot be created', () => {
