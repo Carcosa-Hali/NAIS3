@@ -34,7 +34,8 @@ import { getPresetName, getScene } from './scenes/repo'
 app.setName('NAIS3')
 
 // 중복 실행 방지 (특히 Windows) — 두 번째 실행은 기존 창을 앞으로
-if (!app.requestSingleInstanceLock()) {
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -105,6 +106,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // app.quit()은 비동기라 두 번째 실행도 ready까지 온다 — 여기서 멈추지 않으면 첫 실행이
+  // 마이그레이션 중인 DB를 같이 열어 백업·마이그레이션을 중복 실행한다
+  if (!hasSingleInstanceLock) return
   electronApp.setAppUserModelId('com.sunanakgo.nais3')
 
   protocol.handle('nais-image', (request) => {
