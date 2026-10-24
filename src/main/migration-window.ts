@@ -10,11 +10,18 @@ const SHOW_DELAY_MS = 500
  * 멈춘 줄 알고 다시 실행하게 된다). 창이 뜬 뒤에는 second-instance가 이 창을 앞으로 가져온다.
  * close()는 메인 창을 만든 뒤에 — 먼저 닫으면 window-all-closed로 앱이 종료된다.
  */
-export function showMigrationProgress(lang: Lang): { close(): void } {
+export interface MigrationProgress {
+  /** 아직 안 떴으면 띄우지 않고, 떠 있으면 숨긴다 (창 수는 그대로) */
+  hide(): void
+  close(): void
+}
+
+export function showMigrationProgress(lang: Lang): MigrationProgress {
   let window: BrowserWindow | null = null
   // 사용자가 창만 닫는 것은 막고, 앱 종료(Cmd+Q·로그아웃 등)는 막지 않는다.
   // closable: false인 창은 app.quit()의 창 닫기를 취소시키므로 before-quit에서 풀어 준다
   let quitting = false
+  let hidden = false
   const allowQuit = (): void => {
     quitting = true
     clearTimeout(timer)
@@ -48,12 +55,19 @@ export function showMigrationProgress(lang: Lang): { close(): void } {
     window.on('close', (event) => {
       if (!quitting) event.preventDefault()
     })
-    window.once('ready-to-show', () => window?.show())
+    window.once('ready-to-show', () => {
+      if (!hidden) window?.show()
+    })
     void window.loadURL(
       `data:text/html;charset=utf-8,${encodeURIComponent(page(lang, title, detail))}`
     )
   }, SHOW_DELAY_MS)
   return {
+    hide: () => {
+      hidden = true
+      clearTimeout(timer)
+      window?.hide()
+    },
     close: () => {
       clearTimeout(timer)
       app.removeListener('before-quit', allowQuit)

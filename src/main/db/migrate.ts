@@ -25,13 +25,6 @@ export function openDatabase(path: string, options?: Database.Options): Database
   return db
 }
 
-/**
- * 남은 마이그레이션 적용.
- *
- * 안전장치 (NAIS2 세이브 유실 문제의 근본 대책):
- * - 마이그레이션 필요 시 실행 전 파일 백업 자동 생성 (pre-migration-v{N}.db)
- * - 각 마이그레이션은 개별 트랜잭션: 실패하면 해당 버전 이전 상태로 남고 앱은 에러 표면화
- */
 /** 백업·마이그레이션이 남은 기존 DB인지. 새 DB(버전 0)는 백업이 없어 금방 끝난다 */
 export function hasPendingUpgrade(db: Database.Database): boolean {
   const version = db.pragma('user_version', { simple: true }) as number
@@ -49,6 +42,13 @@ export function readUiLanguage(db: Database.Database): unknown {
   }
 }
 
+/**
+ * 남은 마이그레이션 적용.
+ *
+ * 안전장치 (NAIS2 세이브 유실 문제의 근본 대책):
+ * - 마이그레이션 필요 시 실행 전 파일 백업 자동 생성 (pre-migration-v{N}.db)
+ * - 각 마이그레이션은 개별 트랜잭션: 실패하면 해당 버전 이전 상태로 남고 앱은 에러 표면화
+ */
 export function migrate(db: Database.Database, backupDir: string): void {
   const current = db.pragma('user_version', { simple: true }) as number
   const target = migrations.length

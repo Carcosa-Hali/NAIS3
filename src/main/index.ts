@@ -24,7 +24,7 @@ import { broadcast, registerIpcHandlers } from './ipc'
 import { resolveInitialLanguage, t } from './i18n'
 import { translate, type Lang, type MessageId } from '../shared/i18n'
 import { setupUpdater } from './updater'
-import { showMigrationProgress } from './migration-window'
+import { showMigrationProgress, type MigrationProgress } from './migration-window'
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
 import { requestUsesV5Usage, resolveNaiAccountForGeneration } from './nai/account-router'
@@ -108,7 +108,10 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(async () => {
+// 업그레이드 중 띄우는 진행 창
+let migrationProgress: MigrationProgress | undefined
+
+const startup = app.whenReady().then(async () => {
   // app.quit()은 비동기라 두 번째 실행도 ready까지 온다 — 여기서 멈추지 않으면 첫 실행이
   // 마이그레이션 중인 DB를 같이 열어 백업·마이그레이션을 중복 실행한다
   if (!hasSingleInstanceLock) return
@@ -146,7 +149,6 @@ app.whenReady().then(async () => {
   })
 
   let dbVersion: number
-  let migrationProgress: { close(): void } | undefined
   // 워커가 읽은 이 DB의 언어 — 워커가 실패하면 메인 DB가 안 열려 t()는 한국어로 떨어진다
   let workspaceLanguage: Lang | undefined
   try {
@@ -170,6 +172,9 @@ app.whenReady().then(async () => {
           message('ui.pleaseUpdateNais3ToTheLatestVersion')
         )
       : raw
+    // 오류 창 뒤에 "끝나면 열립니다" 진행 창이 남지 않게 숨긴다. 닫으면 마지막 창이라
+    // window-all-closed로 종료가 시작돼 오류 창이 바로 사라진다
+    migrationProgress?.hide()
     dialog.showErrorBox(message('ui.nais3DatabaseError'), body)
     migrationProgress?.close()
     app.quit()
@@ -342,13 +347,14 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) app.dock.setIcon(icon)
 
   createWindow()
-  migrationProgress?.close()
   setupUpdater() // GitHub release 자동 업데이트 확인 (패키징된 앱에서만 실제 동작)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+// 메인 창을 만든 뒤에 닫는다 — 시작 도중 예외가 나도 닫을 수 없는 진행 창이 남지 않게
+void startup.finally(() => migrationProgress?.close())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
