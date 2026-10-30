@@ -9,9 +9,9 @@ const ICON: Record<ToastType, typeof Info> = {
   success: CheckCircle2
 }
 const TONE: Record<ToastType, string> = {
-  error: 'border-danger/40 text-danger',
+  error: 'border-danger/40 text-danger-ink',
   info: 'border-line text-ink',
-  success: 'border-emerald-500/40 text-emerald-500'
+  success: 'border-success/40 text-success-ink'
 }
 
 /** 하단 중앙 토스트 스택 — 모든 알림을 한 곳에서 처리 */

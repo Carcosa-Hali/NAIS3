@@ -1,13 +1,45 @@
 import { ImageIcon, Loader2, Lock, LockOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import nais3Logo from '../assets/nais3-logo.svg'
 import { imageUrl } from '../lib/constants'
 import { useGenerationStore } from '../stores/generation-store'
 import { useMetadataStore } from '../stores/metadata-store'
 import { cn } from '../lib/utils'
 import { isLeavingDropZone, useDragEndCleanup } from '../lib/drop-zone'
 import { useT } from '../lib/i18n'
+import { greetingFor } from '../lib/greeting'
 import { DropOverlay } from './drop-overlay'
 import { ImageContextMenu } from './image-context-menu'
+
+/** 빈 미리보기의 시간대별 인사. 변형은 마운트 때 한 번 고르고, 시간대는 1분마다 다시 판정 */
+function Greeting(): React.JSX.Element {
+  const t = useT()
+  const [pick] = useState(Math.random)
+  const [hour, setHour] = useState(() => new Date().getHours())
+  useEffect(() => {
+    const id = window.setInterval(() => setHour(new Date().getHours()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return (
+    <div className="flex flex-col items-center gap-4 px-6 text-center">
+      {/* 로고를 마스크로 써서 본문 글자색(ink)으로 칠한다 — 다크=흰색, 라이트=검정 */}
+      <div
+        aria-hidden
+        className="h-14 w-14 bg-ink"
+        style={{
+          maskImage: `url("${nais3Logo}")`,
+          maskSize: 'contain',
+          maskRepeat: 'no-repeat',
+          maskPosition: 'center'
+        }}
+      />
+      <h2 className="text-[30px] font-medium tracking-tight text-ink">
+        {t(greetingFor(hour, pick))}
+      </h2>
+      <span className="text-[14px] text-faint">{t('ui.generatedImagesWillAppearHere')}</span>
+    </div>
+  )
+}
 
 export function PreviewPane(): React.JSX.Element {
   const t = useT()
@@ -125,21 +157,18 @@ export function PreviewPane(): React.JSX.Element {
         )
       ) : generating ? (
         <div className="flex flex-col items-center gap-3 text-muted">
-          <Loader2 size={38} className="animate-spin text-accent" strokeWidth={2} />
+          <Loader2 size={38} className="animate-spin text-accent-ink" strokeWidth={2} />
           <span className="text-[13px]">{t('ui.preparingToGenerate')}</span>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-2 text-faint">
-          <ImageIcon size={40} strokeWidth={1.2} />
-          <span className="text-[13px]">{t('ui.generatedImagesWillAppearHere')}</span>
-        </div>
+        <Greeting />
       )}
 
       {/* A batch retains the previous result path; only a user-pinned view hides progress. */}
       {generating && !viewPinned && (
         <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-full border border-line bg-paper/85 px-4 py-1.5 backdrop-blur">
           {preparing ? (
-            <Loader2 size={14} className="animate-spin text-accent" />
+            <Loader2 size={14} className="animate-spin text-accent-ink" />
           ) : (
             <div className="h-1.5 w-36 overflow-hidden rounded-full bg-surface-2">
               <div
@@ -157,7 +186,7 @@ export function PreviewPane(): React.JSX.Element {
 
       {/* 해상도·시드 칩 — 완성작(파일)이 표시 중일 때 (생성 중이라도 고정 보기면 표시). 시드 클릭=고정 토글 */}
       {viewingFilePath && !streamShown && info && (info.width || info.seed != null) && (
-        <div className="absolute bottom-3 left-3 flex flex-col items-start gap-0.5 rounded-md bg-paper/35 px-2.5 py-1 font-mono text-[11px] leading-tight text-muted opacity-70 backdrop-blur-sm transition hover:bg-paper/90 hover:text-ink hover:opacity-100">
+        <div className="absolute bottom-3 left-3 flex flex-col items-start gap-0.5 rounded-md bg-paper/90 px-2.5 py-1 font-mono text-[11px] leading-tight text-muted backdrop-blur-sm transition hover:text-ink">
           {info.width && info.height && (
             <span>
               {info.width}×{info.height}
@@ -167,7 +196,7 @@ export function PreviewPane(): React.JSX.Element {
             <button
               className={cn(
                 'flex items-center gap-1 rounded transition-colors',
-                seedLocked && requestSeed === info.seed ? 'text-accent' : 'hover:text-ink'
+                seedLocked && requestSeed === info.seed ? 'text-accent-ink' : 'hover:text-ink'
               )}
               title={
                 seedLocked && requestSeed === info.seed

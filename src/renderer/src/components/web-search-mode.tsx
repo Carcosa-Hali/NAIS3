@@ -153,7 +153,7 @@ export function WebSearchMode(): React.JSX.Element {
             </button>
             {editLinks && (
               <button
-                className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-danger text-white"
+                className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-danger text-on-danger"
                 title={t('ui.delete')}
                 onClick={() => removeQuickLink(i)}
               >
@@ -180,7 +180,7 @@ export function WebSearchMode(): React.JSX.Element {
         <Button
           size="sm"
           variant="ghost"
-          className={cn('h-7 px-2 text-[12px]', editLinks && 'text-accent')}
+          className={cn('h-7 px-2 text-[12px]', editLinks && 'text-accent-ink')}
           onClick={() => setEditLinks(!editLinks)}
         >
           {editLinks ? t('ui.done') : t('ui.edit')}
@@ -219,7 +219,7 @@ function NavBtn({
       title={tip}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-35"
+      className="grid size-8 place-items-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-35"
     >
       {children}
     </button>

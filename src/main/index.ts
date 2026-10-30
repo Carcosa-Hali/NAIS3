@@ -2,13 +2,14 @@ import { app, shell, BrowserWindow, dialog, net, protocol } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import sharp from 'sharp'
+import sharp from './sharp'
 import icon from '../../resources/icon.png?asset'
-import { closeDb, initDb } from './db'
+import { closeDb, initDb, migrateInWorker } from './db'
+import migrationWorkerPath from './db/migrate.worker?modulePath'
 import { getSetting } from './db/settings'
 import { preprocessRequest } from './fragments/request'
 import { refreshWorkbook } from './fragments/workbook'
-import { inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
+import { effectiveSteps, inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
 import { snapNaiResolution } from '../shared/nai-resolution'
 import { fragmentSource } from './fragments/repo'
 import {
@@ -17,14 +18,18 @@ import {
   isUnderImagesRoot,
   saveEphemeralImage,
   saveGeneratedImage,
-  thumbnailByPath
+  thumbnailByPath,
+  thumbnailForUrl
 } from './images/storage'
 import { broadcast, registerIpcHandlers } from './ipc'
 import { resolveInitialLanguage, t } from './i18n'
+import { translate, type Lang, type MessageId } from '../shared/i18n'
 import { setupUpdater } from './updater'
+import { showMigrationProgress, type MigrationProgress } from './migration-window'
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
 import { requestUsesV5Usage, resolveNaiAccountForGeneration } from './nai/account-router'
+import { localPromptMetadata } from './nai/payload'
 import { prepareCharRefs, prepareVibes } from './refs/prepare'
 import { GenerationQueue } from './queue/generation-queue'
 import { getPresetName, getScene } from './scenes/repo'
@@ -33,7 +38,8 @@ import { getPresetName, getScene } from './scenes/repo'
 app.setName('NAIS3')
 
 // 중복 실행 방지 (특히 Windows) — 두 번째 실행은 기존 창을 앞으로
-if (!app.requestSingleInstanceLock()) {
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -103,11 +109,29 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+// 업그레이드 중 띄우는 진행 창
+let migrationProgress: MigrationProgress | undefined
+
+const startup = app.whenReady().then(async () => {
+  // app.quit()은 비동기라 두 번째 실행도 ready까지 온다 — 여기서 멈추지 않으면 첫 실행이
+  // 마이그레이션 중인 DB를 같이 열어 백업·마이그레이션을 중복 실행한다
+  if (!hasSingleInstanceLock) return
   electronApp.setAppUserModelId('com.sunanakgo.nais3')
 
   protocol.handle('nais-image', (request) => {
     const url = new URL(request.url)
+    // Stored webp thumbnails by row id — list IPC responses carry these URLs instead of base64
+    if (url.searchParams.has('thumb')) {
+      const thumb = thumbnailForUrl(url)
+      if (!thumb) return new Response('not found', { status: 404 })
+      // URL carries a content version (created_at + size), so the bytes behind it never change
+      return new Response(new Uint8Array(thumb), {
+        headers: {
+          'content-type': 'image/webp',
+          'cache-control': 'max-age=31536000, immutable'
+        }
+      })
+    }
     const filePath = decodeURIComponent(url.searchParams.get('path') ?? '')
     // 자동저장 OFF 임시 이미지 — 메모리 원본, 만료됐으면 DB 썸네일로 폴백
     if (isMemoryPath(filePath)) {
@@ -126,21 +150,34 @@ app.whenReady().then(() => {
   })
 
   let dbVersion: number
+  // 워커가 읽은 이 DB의 언어 — 워커가 실패하면 메인 DB가 안 열려 t()는 한국어로 떨어진다
+  let workspaceLanguage: Lang | undefined
   try {
+    // 워커가 끝나면 initDb는 열기만 한다 (워커를 못 띄운 경우만 이전처럼 메인 스레드에서 마이그레이션)
+    await migrateInWorker(migrationWorkerPath, ({ language, pending }) => {
+      workspaceLanguage = language
+      if (pending) migrationProgress = showMigrationProgress(language)
+    })
     const initialized = initDb()
     dbVersion = initialized.version
     // DB가 열린 직후 언어를 1회 확정·고정 (기존 설치는 한국어 유지)
     resolveInitialLanguage(initialized.isNewDatabase)
   } catch (e) {
     // DB를 못 열면 조용히 빈 상태로 시작하지 않는다 — 세이브 유실로 오인되는 최악의 UX
+    const message = (id: MessageId): string =>
+      workspaceLanguage ? translate(workspaceLanguage, id, []) : t(id)
     const raw = e instanceof Error ? e.message : String(e)
     const body = raw.includes('NAIS3를 최신 버전으로 업데이트하세요.')
       ? raw.replace(
           'NAIS3를 최신 버전으로 업데이트하세요.',
-          t('ui.pleaseUpdateNais3ToTheLatestVersion')
+          message('ui.pleaseUpdateNais3ToTheLatestVersion')
         )
       : raw
-    dialog.showErrorBox(t('ui.nais3DatabaseError'), body)
+    // 오류 창 뒤에 "끝나면 열립니다" 진행 창이 남지 않게 숨긴다. 닫으면 마지막 창이라
+    // window-all-closed로 종료가 시작돼 오류 창이 바로 사라진다
+    migrationProgress?.hide()
+    dialog.showErrorBox(message('ui.nais3DatabaseError'), body)
+    migrationProgress?.close()
     app.quit()
     return
   }
@@ -238,7 +275,7 @@ app.whenReady().then(() => {
             broadcast('generation:progress', {
               id,
               stepIx,
-              totalSteps: request.steps,
+              totalSteps: effectiveSteps(request.model, request.steps),
               previewPng: preview?.toString('base64')
             })
           },
@@ -246,14 +283,7 @@ app.whenReady().then(() => {
         )
 
     const scene = request.sceneId ? getScene(request.sceneId) : null
-    const localMetadata = request.promptParts
-      ? {
-          promptParts: {
-            ...request.promptParts,
-            negative: request.negativePrompt
-          }
-        }
-      : undefined
+    const localMetadata = localPromptMetadata(request)
 
     // 자동저장 OFF: 메인 생성은 파일로 저장하지 않는다 — 원본은 메모리(최근 20장)에만,
     // 히스토리에는 썸네일 행으로 남는다 (NAIS2 방식). 씬 생성은 항상 씬 폴더에 저장.
@@ -327,6 +357,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+// 메인 창을 만든 뒤에 닫는다 — 시작 도중 예외가 나도 닫을 수 없는 진행 창이 남지 않게
+void startup.finally(() => migrationProgress?.close())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

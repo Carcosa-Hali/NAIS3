@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { LibraryImage, LibraryStack } from '@shared/types'
-import { imageUrl } from '../lib/constants'
+import { imageUrl, thumbnailFallback } from '../lib/constants'
 import { useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
 import { askConfirm, askText } from '../stores/dialog-store'
@@ -239,7 +239,7 @@ export function LibraryMode(): React.JSX.Element {
           </>
         ) : (
           <>
-            <Library size={15} className="text-accent" />
+            <Library size={15} className="text-accent-ink" />
             <span className="text-[13.5px] font-semibold">{t('ui.library')}</span>
           </>
         )}
@@ -385,13 +385,13 @@ export function LibraryMode(): React.JSX.Element {
                         <ContextMenuSeparator />
                         {currentStack ? (
                           <ContextMenuItem onSelect={() => void moveToStack(idsWith(img.id), null)}>
-                            <Ungroup size={13} className="text-orange-400" />{' '}
+                            <Ungroup size={13} className="text-hue-orange" />{' '}
                             {t('ui.removeFromStack')}
                           </ContextMenuItem>
                         ) : (
                           <ContextMenuSub>
                             <ContextMenuSubTrigger>
-                              <Layers size={13} className="text-cyan-400" /> {t('ui.addToStack')}
+                              <Layers size={13} className="text-hue-cyan" /> {t('ui.addToStack')}
                             </ContextMenuSubTrigger>
                             <ContextMenuSubContent>
                               {stacks.map((s) => (
@@ -432,11 +432,7 @@ export function LibraryMode(): React.JSX.Element {
                   style={{ aspectRatio: CARD_ASPECT[cardOrientation] }}
                 >
                   <img
-                    src={
-                      dragImg.thumbnail
-                        ? `data:image/webp;base64,${dragImg.thumbnail}`
-                        : imageUrl(dragImg.filePath)
-                    }
+                    src={dragImg.thumbnailUrl || imageUrl(dragImg.filePath)}
                     className="h-full w-full object-cover"
                     draggable={false}
                     alt=""
@@ -497,7 +493,7 @@ export function LibraryMode(): React.JSX.Element {
           <Button
             size="sm"
             variant="ghost"
-            className="gap-1 text-danger hover:text-danger"
+            className="gap-1 text-danger-ink hover:text-danger-ink"
             disabled={selection.size === 0}
             onClick={() => void confirmDelete([...selection])}
           >
@@ -563,17 +559,18 @@ function ImageCard({
         onClick={onClick}
       >
         <img
-          src={img.thumbnail ? `data:image/webp;base64,${img.thumbnail}` : imageUrl(img.filePath)}
+          src={img.thumbnailUrl || imageUrl(img.filePath)}
           className="h-full w-full object-cover"
           draggable={false}
           loading="lazy"
+          {...thumbnailFallback(img.filePath)}
           alt=""
         />
         {editMode && (
           <span
             className={cn(
               'absolute right-1.5 top-1.5 grid size-5 place-items-center rounded border-2 transition',
-              checked ? 'border-accent bg-accent text-white' : 'border-white/80 bg-black/30'
+              checked ? 'border-accent bg-accent text-on-accent' : 'border-white/80 bg-black/30'
             )}
           >
             {checked && <span className="text-[11px] leading-none">✓</span>}
@@ -619,12 +616,13 @@ function StackCard({
           {/* 스택 느낌 — 뒤에 살짝 어긋난 레이어 */}
           <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-lg border border-line bg-paper" />
           <div className="absolute inset-0 overflow-hidden rounded-lg">
-            {stack.coverThumbnail ? (
+            {stack.coverUrl ? (
               <img
-                src={`data:image/webp;base64,${stack.coverThumbnail}`}
+                src={stack.coverUrl}
                 className="h-full w-full object-cover"
                 draggable={false}
                 loading="lazy"
+                {...thumbnailFallback(null)}
                 alt=""
               />
             ) : (
@@ -682,7 +680,7 @@ function IconBtn({
           aria-pressed={active === undefined ? undefined : active}
           className={cn(
             'grid size-8 place-items-center rounded-md transition-colors',
-            active ? 'bg-accent text-white' : 'text-muted hover:bg-surface-2 hover:text-fg'
+            active ? 'bg-accent text-on-accent' : 'text-muted hover:bg-surface-2 hover:text-ink'
           )}
         >
           {icon}

@@ -16,7 +16,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { effectiveGenerationStrength, estimateAnlas, formatAnlasEstimate } from '@shared/anlas'
 import type { MessageId } from '@shared/i18n'
 import { snapNaiResolution } from '@shared/nai-resolution'
-import { inpaintingModelFor, modelCapabilities, promptTokenLimit } from '@shared/nai-models'
+import {
+  inpaintingModelFor,
+  isMediumEffortModel,
+  MEDIUM_EFFORT_FIXED,
+  modelCapabilities,
+  promptTokenLimit
+} from '@shared/nai-models'
 import { useT } from '../lib/i18n'
 import { useCharactersStore } from '../stores/characters-store'
 import { useFragmentsStore } from '../stores/fragments-store'
@@ -327,12 +333,19 @@ export function PromptPanel(): React.JSX.Element {
             collapsed={negCollapsed}
             onToggle={() => setNegCollapsed((v) => !v)}
           />
+          {!negCollapsed && isMediumEffortModel(request.model) && (
+            // Medium effort는 사용자 UC를 보내지 않는다 (공지 권장: 프롬프트에 -3::hat:: 같은 음수 강조)
+            <p className="shrink-0 text-[11.5px] leading-snug text-faint">
+              {t('ui.negativeUnusedAtMediumEffort')}
+            </p>
+          )}
           {!negCollapsed && (
             <PromptEditor
               negative
               className="min-h-0 flex-1"
               value={request.negativePrompt}
-              tokensOverride={tokenTotals.neg}
+              // Medium effort는 사용자 UC를 보내지 않으므로 토큰 수·한도 경고도 숨김
+              tokensOverride={isMediumEffortModel(request.model) ? null : tokenTotals.neg}
               tokenLimit={tokenLimit}
               placeholder={t('ui.appendedAfterTheUcPreset')}
               onValueChange={(v) => patch({ negativePrompt: v })}
@@ -440,7 +453,7 @@ export function PromptPanel(): React.JSX.Element {
             {t('ui.generateScenes')}
             {sceneReserved > 0 && (
               // 한글 '장'이 mono 폴백(Windows Consolas)에서 깨져 보여 기본 폰트(Pretendard) 사용
-              <span className="text-[12px] opacity-75">{t('ui.valueImages', sceneReserved)}</span>
+              <span className="text-[12px]">{t('ui.valueImages', sceneReserved)}</span>
             )}
           </Button>
         ) : (
@@ -465,6 +478,7 @@ function QuickGenerationControls(): React.JSX.Element {
   const t = useT()
   const request = useGenerationStore((s) => s.request)
   const patch = useGenerationStore((s) => s.patchRequest)
+  const medium = isMediumEffortModel(request.model)
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -475,7 +489,13 @@ function QuickGenerationControls(): React.JSX.Element {
         ariaLabel={t('ui.resolution')}
         onPick={(width, height) => patch({ width, height })}
       />
-      <label className="flex h-9 min-w-0 items-center gap-2 rounded-md border border-line bg-paper px-2.5">
+      <label
+        className={
+          'flex h-9 min-w-0 items-center gap-2 rounded-md border border-line bg-paper px-2.5' +
+          (medium ? ' cursor-not-allowed opacity-50' : '')
+        }
+        title={medium ? t('ui.fixedAtMediumEffort') : undefined}
+      >
         <span className="shrink-0 text-[12px] text-muted">{t('ui.steps')}</span>
         <input
           className="min-w-0 flex-1 bg-transparent text-right font-mono text-[13px] text-ink outline-none"
@@ -485,7 +505,8 @@ function QuickGenerationControls(): React.JSX.Element {
           max={50}
           step={1}
           inputMode="numeric"
-          value={request.steps}
+          disabled={medium}
+          value={medium ? MEDIUM_EFFORT_FIXED.steps : request.steps}
           onChange={(event) => {
             const parsed = Number.parseInt(event.target.value, 10)
             if (!Number.isNaN(parsed)) patch({ steps: Math.max(1, Math.min(50, parsed)) })
@@ -539,7 +560,7 @@ function TokenBadge({
     <span
       className={
         'rounded bg-paper px-1.5 py-0.5 font-mono text-[10.5px] ' +
-        (over ? 'text-danger' : 'text-faint')
+        (over ? 'text-danger-ink' : 'text-faint')
       }
       title={
         over
@@ -764,7 +785,7 @@ function SyntaxHelp(): React.JSX.Element {
         <div className="flex flex-col gap-1.5">
           {rows.map((r) => (
             <div key={r.syntax} className="flex flex-col gap-0.5">
-              <code className="w-fit rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-accent">
+              <code className="w-fit rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-accent-ink">
                 {t(r.syntax)}
               </code>
               <span className="text-[11px] leading-snug text-muted">{t(r.desc)}</span>
@@ -806,7 +827,7 @@ function ToolButton({
       </Button>
       {badge > 0 && (
         // 우측 상단에 겹치는 알림 배지 (붉은 원)
-        <span className="pointer-events-none absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 font-mono text-[10px] font-medium text-white shadow">
+        <span className="pointer-events-none absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 font-mono text-[10px] font-medium text-on-danger shadow">
           {badge}
         </span>
       )}

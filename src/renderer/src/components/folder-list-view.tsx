@@ -215,7 +215,7 @@ function FolderRowInner({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 w-7 p-0 hover:text-danger"
+              className="h-7 w-7 p-0 hover:text-danger-ink"
               title={t('ui.deleteFolderItemsBecomeUncategorized')}
               onClick={() => actions.remove(folder.id)}
             >

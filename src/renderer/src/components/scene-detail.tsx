@@ -1,7 +1,7 @@
 import { ArrowLeft, Loader2, Minus, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Scene } from '@shared/types'
-import { promptTokenLimit } from '@shared/nai-models'
+import { isMediumEffortModel, promptTokenLimit } from '@shared/nai-models'
 import { imageUrl } from '../lib/constants'
 import { ResolutionPicker } from './resolution-picker'
 import { useGenerationStore } from '../stores/generation-store'
@@ -43,7 +43,9 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
   const model = useGenerationStore((s) => s.request.model)
   const tokenLimit = promptTokenLimit(model)
   const charItems = useCharactersStore((s) => s.items)
-  const previewPng = useGenerationStore((s) => s.previewPng)
+  // Only whether a frame exists — the frame itself is read by StreamingFrame so per-step
+  // previews don't re-render the whole image grid
+  const hasPreview = useGenerationStore((s) => s.previewPng != null)
   const generatingSceneId = useGenerationStore(
     (s) => s.queue?.items.find((i) => i.state === 'generating')?.request.sceneId ?? null
   )
@@ -54,28 +56,26 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
 
   // F1 튐 방지: 스트리밍 마지막 프레임을 붙들었다가 완성본이 로드되면 교체.
   // 스트리밍 시작 시점의 최상단 이미지 id를 기록 → 그와 다른 새 이미지가 로드되면 프레임 해제.
-  const [heldFrame, setHeldFrame] = useState<string | null>(null)
+  const [holding, setHolding] = useState(false)
   const baselineTopId = useRef<number | null>(null)
   useEffect(() => {
     if (streaming) baselineTopId.current = images[0]?.id ?? null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streaming])
   useEffect(() => {
-    if (streaming && previewPng) setHeldFrame(previewPng)
-  }, [streaming, previewPng])
+    if (streaming && hasPreview) setHolding(true)
+  }, [streaming, hasPreview])
   // 안전장치: 씬이 바뀌면 프레임 리셋 / 스트리밍 끝난 뒤 새 이미지가 안 오면 6초 후 해제
-  useEffect(() => setHeldFrame(null), [scene.id])
+  useEffect(() => setHolding(false), [scene.id])
   useEffect(() => {
-    if (streaming || !heldFrame) return
-    const t = setTimeout(() => setHeldFrame(null), 6000)
+    if (streaming || !holding) return
+    const t = setTimeout(() => setHolding(false), 6000)
     return () => clearTimeout(t)
-  }, [streaming, heldFrame])
+  }, [streaming, holding])
   // 스트리밍이 끝났는데 아직 새 이미지가 안 들어왔으면 프레임 유지, 들어와 로드되면 해제
   const newTop =
-    !streaming && heldFrame && images[0] && images[0].id !== baselineTopId.current
-      ? images[0]
-      : null
-  const showTile = streaming || heldFrame != null
+    !streaming && holding && images[0] && images[0].id !== baselineTopId.current ? images[0] : null
+  const showTile = streaming || holding
 
   // F9: 씬 에디터 토큰 수를 base(메인)+씬 합산으로 표시 — 실제 전송은 base 뒤에 씬을 붙이므로
   const [sceneTokens, setSceneTokens] = useState<{ pos: number | null; neg: number | null }>({
@@ -186,7 +186,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             value={scene.reserves[activeCastId] ?? 0}
             className={cn(
               'min-w-6 rounded-full px-1 text-center text-[13px] font-semibold',
-              !activeCast && (scene.reserves[''] ?? 0) > 0 && 'bg-danger text-white'
+              !activeCast && (scene.reserves[''] ?? 0) > 0 && 'bg-danger text-on-danger'
             )}
             style={
               activeCast && (scene.reserves[activeCastId] ?? 0) > 0
@@ -231,19 +231,25 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             tokenLimit={tokenLimit}
             className="h-32 max-h-[520px] min-h-24 resize-y"
           />
+          {isMediumEffortModel(model) && (
+            // Medium effort는 씬 네거티브도 보내지 않는다
+            <p className="text-[11.5px] leading-snug text-faint">
+              {t('ui.negativeUnusedAtMediumEffort')}
+            </p>
+          )}
           <PromptEditor
             value={scene.negativePrompt}
             onValueChange={(v) => void update(scene.id, { negativePrompt: v })}
             placeholder={t('ui.sceneNegativePrompt')}
             negative
-            tokensOverride={sceneTokens.neg}
+            tokensOverride={isMediumEffortModel(model) ? null : sceneTokens.neg}
             tokenLimit={tokenLimit}
             className="h-20 max-h-96 min-h-16 resize-y"
           />
         </div>
 
         <div className="mt-4 mb-2 flex items-center gap-2 text-[12px] text-muted">
-          <span className="font-medium text-fg">{t('ui.generatedImages')}</span>
+          <span className="font-medium text-ink">{t('ui.generatedImages')}</span>
           <span>{t('ui.valueImages', imagesTotal.toLocaleString())}</span>
           <div className="flex-1" />
           {/* 즐겨찾기만 보기 (N4) */}
@@ -251,9 +257,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
             onClick={() => setFavoritesOnly(!favoritesOnly)}
             className={cn(
               'flex h-6 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium transition-colors',
-              favoritesOnly
-                ? 'bg-amber-400/90 text-black'
-                : 'bg-surface-2 text-muted hover:text-ink'
+              favoritesOnly ? 'bg-favorite/90 text-black' : 'bg-surface-2 text-muted hover:text-ink'
             )}
             title={t('ui.showFavoritesOnly')}
           >
@@ -276,7 +280,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                 n > 0 ? 'success' : 'info'
               )
             }}
-            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger"
+            className="flex h-6 items-center gap-1 rounded-md bg-surface-2 px-2 text-[11.5px] font-medium text-muted transition-colors hover:text-danger-ink"
             title={t('ui.deleteAllExceptFavorites')}
           >
             <Trash2 size={12} /> {t('ui.declutter')}
@@ -297,7 +301,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
           </div>
         </div>
 
-        {images.length === 0 && !imagesLoading && !streaming ? (
+        {images.length === 0 && !imagesLoading && !showTile ? (
           <p className="py-10 text-center text-[13px] text-faint">
             {favoritesOnly
               ? t('ui.noFavoritedImages')
@@ -314,23 +318,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                 className="relative overflow-hidden rounded-md bg-surface-2 ring-2 ring-accent/50"
                 style={{ aspectRatio: `${scene.width} / ${scene.height}` }}
               >
-                {streaming && previewPng ? (
-                  <img
-                    src={`data:image/png;base64,${previewPng}`}
-                    className="h-full w-full object-cover"
-                    alt=""
-                  />
-                ) : heldFrame ? (
-                  <img
-                    src={`data:image/png;base64,${heldFrame}`}
-                    className="h-full w-full object-cover"
-                    alt=""
-                  />
-                ) : (
-                  <div className="grid h-full w-full place-items-center">
-                    <Loader2 size={26} className="animate-spin text-accent" />
-                  </div>
-                )}
+                <StreamingFrame key={scene.id} streaming={streaming} />
                 {streaming && (
                   <span className="absolute bottom-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
                     {t('ui.generating')}
@@ -341,7 +329,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                   <img
                     src={imageUrl(newTop.filePath)}
                     className="hidden"
-                    onLoad={() => setHeldFrame(null)}
+                    onLoad={() => setHolding(false)}
                     alt=""
                   />
                 )}
@@ -375,7 +363,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                     className={cn(
                       'absolute left-1 top-1 grid size-6 place-items-center rounded-full backdrop-blur transition',
                       img.favorite
-                        ? 'bg-amber-400/90 text-black'
+                        ? 'bg-favorite/90 text-black'
                         : 'bg-black/40 text-white opacity-0 group-hover:opacity-100'
                     )}
                     onClick={() => void toggleFavorite(img.id)}
@@ -384,7 +372,7 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
                     <Star size={13} fill={img.favorite ? 'currentColor' : 'none'} />
                   </button>
                   <button
-                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition hover:bg-danger group-hover:opacity-100"
+                    className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur transition hover:bg-danger hover:text-on-danger group-hover:opacity-100"
                     onClick={() => void deleteImage(img.id)}
                     title={t('ui.delete')}
                   >
@@ -409,6 +397,25 @@ export function SceneDetail({ scene }: { scene: Scene }): React.JSX.Element {
           onClose={() => setLightboxIdx(-1)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * Streaming tile image. Subscribes to the preview frame on its own so each step re-renders
+ * only this tile, and keeps the last frame after streaming ends until the parent releases it.
+ */
+function StreamingFrame({ streaming }: { streaming: boolean }): React.JSX.Element {
+  const previewPng = useGenerationStore((s) => s.previewPng)
+  const [heldFrame, setHeldFrame] = useState<string | null>(null)
+  // Remember the latest frame during render (no extra effect pass per step)
+  if (streaming && previewPng && previewPng !== heldFrame) setHeldFrame(previewPng)
+  const frame = streaming && previewPng ? previewPng : heldFrame
+  return frame ? (
+    <img src={`data:image/png;base64,${frame}`} className="h-full w-full object-cover" alt="" />
+  ) : (
+    <div className="grid h-full w-full place-items-center">
+      <Loader2 size={26} className="animate-spin text-accent-ink" />
     </div>
   )
 }

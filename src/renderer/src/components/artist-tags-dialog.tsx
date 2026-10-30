@@ -63,7 +63,7 @@ export function ArtistTagsDialog(): React.JSX.Element {
             <p className="text-[13px]">{t('ui.analyzingStyleMayTakeAFewSeconds')}</p>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-danger">
+          <div className="flex flex-col items-center gap-3 py-14 text-danger-ink">
             <ImageOff size={30} strokeWidth={1.4} />
             <p className="max-w-[80%] text-center text-[13px]">{error}</p>
           </div>
@@ -96,13 +96,13 @@ export function ArtistTagsDialog(): React.JSX.Element {
                       className={cn(
                         'flex w-full shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11.5px] transition-colors',
                         off
-                          ? 'border-line text-faint opacity-55 hover:opacity-80'
+                          ? 'border-line text-faint hover:text-muted'
                           : 'border-accent/50 bg-accent/10 text-ink'
                       )}
                     >
                       <Palette
                         size={11}
-                        className={cn('shrink-0', off ? 'text-faint' : 'text-accent')}
+                        className={cn('shrink-0', off ? 'text-faint' : 'text-accent-ink')}
                       />
                       <span className="min-w-0 flex-1 truncate text-left">{tag.label}</span>
                       <span className="shrink-0 font-mono text-[10px] text-faint">
@@ -118,7 +118,7 @@ export function ArtistTagsDialog(): React.JSX.Element {
                   readOnly
                   value={selectedText}
                   placeholder={t('ui.noTagsSelected')}
-                  className="block h-24 w-full resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-2/40 p-2 font-mono text-[12px] leading-relaxed text-ink outline-none placeholder:font-sans placeholder:text-faint"
+                  className="block h-24 w-full resize-none overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-line bg-surface-2/40 p-2 font-mono text-[12px] leading-relaxed text-ink outline-none placeholder:font-sans placeholder:text-muted"
                 />
               </div>
             </div>

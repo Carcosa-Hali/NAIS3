@@ -61,7 +61,7 @@ export function MetadataDialog(): React.JSX.Element {
             <Loader2 size={18} className="animate-spin" /> {t('ui.reading')}
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-danger">
+          <div className="flex flex-col items-center gap-3 py-14 text-danger-ink">
             <ImageOff size={30} strokeWidth={1.4} />
             <p className="text-[13px]">{error}</p>
           </div>
@@ -297,7 +297,7 @@ function CheckLabel({
       <span
         className={cn(
           'grid size-4 place-items-center rounded border transition-colors',
-          checked ? 'border-accent bg-accent text-white' : 'border-line bg-surface'
+          checked ? 'border-accent bg-accent text-on-accent' : 'border-line bg-surface'
         )}
       >
         {checked && <Check size={11} strokeWidth={3} />}
@@ -357,7 +357,7 @@ function ReadonlyPrompt({
       value={value}
       placeholder={t('ui.none')}
       className={cn(
-        'block w-full resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent font-mono leading-relaxed text-ink outline-none placeholder:font-sans placeholder:text-faint',
+        'block w-full resize-none overflow-y-auto whitespace-pre-wrap break-words bg-transparent font-mono leading-relaxed text-ink outline-none placeholder:font-sans placeholder:text-muted',
         'cursor-text select-text',
         className
       )}
@@ -406,7 +406,7 @@ function Stat({
       <span
         className={cn(
           'grid size-4 shrink-0 place-items-center rounded border transition-colors',
-          checked ? 'border-accent bg-accent text-white' : 'border-line bg-surface'
+          checked ? 'border-accent bg-accent text-on-accent' : 'border-line bg-surface'
         )}
       >
         {checked && <Check size={11} strokeWidth={3} />}
