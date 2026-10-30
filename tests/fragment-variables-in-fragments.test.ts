@@ -10,9 +10,9 @@ const sheets = createSpreadsheetSource([
   {
     name: 'outfit_tags_sheet',
     rows: [
-      { key: 'lingerie', value: 'red lingerie, garter belt' },
+      { key: 'formal', value: 'black suit, necktie' },
       { key: 'casual', value: 'striped shirt, overalls' },
-      { key: 'swimwear', value: '${style: sporty => sports bikini | * => monokini}' }
+      { key: 'sportswear', value: '${style: sporty => track jacket | * => sweater}' }
     ]
   }
 ])
@@ -22,14 +22,14 @@ const source: FragmentSource = {
   getLines: (path) =>
     ({
       outfit_selector_fragment: [
-        '${outfits: lingerie => <outfit_tags_sheet/lingerie> | casual => <outfit_tags_sheet/casual>}'
+        '${outfits: formal => <outfit_tags_sheet/formal> | casual => <outfit_tags_sheet/casual>}'
       ],
-      swim_fragment: ['<outfit_tags_sheet/swimwear>'],
+      sports_fragment: ['<outfit_tags_sheet/sportswear>'],
       wrapper: ['<outfit_selector_fragment>, smile']
     })[path] ?? null
 }
 
-function request(character: string, main = 'indoors\n$outfits = lingerie'): GenerationRequest {
+function request(character: string, main = 'indoors\n$outfits = formal'): GenerationRequest {
   return {
     prompt: main,
     negativePrompt: '',
@@ -44,14 +44,14 @@ describe('variable blocks that arrive through fragments', () => {
       rng: first
     })
     expect(out.prompt).toBe('indoors')
-    expect(out.characterPrompts[0].prompt).toBe('girl, red lingerie, garter belt')
+    expect(out.characterPrompts[0].prompt).toBe('girl, black suit, necktie')
   })
 
   it('follows the same roll as blocks written directly in the prompts', () => {
     const out = preprocessRequest(
       request(
-        'girl, <outfit_selector_fragment>, ${outfits: lingerie => choker}',
-        '$outfits = random(lingerie, casual)'
+        'girl, <outfit_selector_fragment>, ${outfits: formal => choker}',
+        '$outfits = random(formal, casual)'
       ),
       source,
       { sheets, rng: () => 0.9 }
@@ -61,16 +61,16 @@ describe('variable blocks that arrive through fragments', () => {
 
   it('resolves blocks in fragments nested inside fragments', () => {
     const out = preprocessRequest(request('<wrapper>'), source, { sheets, rng: first })
-    expect(out.characterPrompts[0].prompt).toBe('red lingerie, garter belt, smile')
+    expect(out.characterPrompts[0].prompt).toBe('black suit, necktie, smile')
   })
 
   it('resolves a ${...} block held in a spreadsheet cell', () => {
     const out = preprocessRequest(
-      request('<swim_fragment>', 'indoors\n$outfits = lingerie\n$style = sporty'),
+      request('<sports_fragment>', 'indoors\n$outfits = formal\n$style = sporty'),
       source,
       { sheets, rng: first }
     )
-    expect(out.characterPrompts[0].prompt).toBe('sports bikini')
+    expect(out.characterPrompts[0].prompt).toBe('track jacket')
   })
 
   it('still fails clearly when a fragment uses a variable that nothing defines', () => {
@@ -84,12 +84,12 @@ describe('variable blocks that arrive through fragments', () => {
 
   it('counts tokens on the resolved text without throwing', () => {
     const [main, character, orphan] = previewTexts(
-      ['$outfits = lingerie\nindoors', '<outfit_selector_fragment>', '<wrapper>'],
+      ['$outfits = formal\nindoors', '<outfit_selector_fragment>', '<wrapper>'],
       source,
       sheets
     )
     expect(main).toBe('indoors')
-    expect(character).toBe('red lingerie, garter belt')
-    expect(orphan).toBe('red lingerie, garter belt, smile')
+    expect(character).toBe('black suit, necktie')
+    expect(orphan).toBe('black suit, necktie, smile')
   })
 })

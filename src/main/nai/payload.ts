@@ -143,17 +143,20 @@ export interface BuildOptions {
  * Medium effort는 사용자 UC를 보내지 않으므로 네거티브도 빈 값으로 기록한다 —
  * 실제로 보내지 않은 UC가 메타데이터 적용 시 복원되지 않도록.
  */
-export function localPromptMetadata(
-  req: GenerationRequest
-):
-  | { promptParts: NonNullable<GenerationRequest['promptParts']> & { negative: string } }
+export function localPromptMetadata(req: GenerationRequest):
+  | {
+      promptParts?: NonNullable<GenerationRequest['promptParts']> & { negative: string }
+      variables?: NonNullable<GenerationRequest['rolledVariables']>
+    }
   | undefined {
-  if (!req.promptParts) return undefined
+  const variables = req.rolledVariables?.length ? req.rolledVariables : undefined
+  if (!req.promptParts) return variables ? { variables } : undefined
   return {
     promptParts: {
       ...req.promptParts,
       negative: isMediumEffortModel(req.model) ? '' : req.negativePrompt
-    }
+    },
+    ...(variables ? { variables } : {})
   }
 }
 

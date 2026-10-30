@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   ChevronUp,
+  Dices,
   ImageUp,
   Info,
   Layers,
@@ -37,6 +38,7 @@ import { FragmentOverlay } from './fragment-overlay'
 import { ParamsDialog } from './params-dialog'
 import { RefOverlay } from './ref-overlay'
 import { ResolutionPicker } from './resolution-picker'
+import { RollPreviewDialog } from './roll-preview-dialog'
 import { SOURCE_BANNER_HEIGHT, SourceBanner } from './source-banner'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -75,6 +77,7 @@ export function PromptPanel(): React.JSX.Element {
     ? snapNaiResolution(source.width, source.height)
     : { width: request.width, height: request.height }
   const [paramsOpen, setParamsOpen] = useState(false)
+  const [rollPreviewOpen, setRollPreviewOpen] = useState(false)
   const quickGenerationControlsEnabled = useLayoutStore((s) => s.quickGenerationControlsEnabled)
 
   useEffect(() => {
@@ -288,6 +291,13 @@ export function PromptPanel(): React.JSX.Element {
             action={
               <div className="flex items-center gap-1">
                 {promptSplitEnabled && <TokenBadge tokens={tokenTotals.pos} limit={tokenLimit} />}
+                <button
+                  className="grid size-5 place-items-center rounded text-faint transition-colors hover:text-ink"
+                  title={t('ui.rollPreview')}
+                  onClick={() => setRollPreviewOpen(true)}
+                >
+                  <Dices size={13} />
+                </button>
                 <SyntaxHelp />
               </div>
             }
@@ -470,6 +480,7 @@ export function PromptPanel(): React.JSX.Element {
       </div>
 
       <ParamsDialog open={paramsOpen} onOpenChange={setParamsOpen} />
+      <RollPreviewDialog open={rollPreviewOpen} onOpenChange={setRollPreviewOpen} />
     </aside>
   )
 }

@@ -94,10 +94,16 @@ const LOCATIONS: Record<string, Cell[][]> = {
 }
 
 describe('parseXlsx', () => {
-  it('reads column A and B of every sheet and ignores the other columns', async () => {
+  it('reads every sheet: key = column A, value = column B, every cell, row numbers and the header row', async () => {
     const sheets = await parseXlsx(await buildWorkbook(LOCATIONS))
     expect(sheets.map((sheet) => sheet.name)).toEqual(['Locations', 'Outfits'])
-    expect(sheets[0].rows).toContainEqual({ key: 'Parks', value: 'park, pond, ducks' })
+    expect(sheets[0].header).toEqual(['Category', 'Tags', 'Notes'])
+    expect(sheets[0].rows).toContainEqual({
+      key: 'Parks',
+      value: 'park, pond, ducks',
+      cells: ['Parks', 'park, pond, ducks', 'my favourite'],
+      row: 5
+    })
     expect(sheets[0].rows).not.toContainEqual(expect.objectContaining({ value: 'my favourite' }))
   })
 
@@ -107,9 +113,10 @@ describe('parseXlsx', () => {
         Misc: [['Count', 3], ['Amp', 'rock & roll'], ['OnlyKey'], [null, 'orphan']]
       })
     )
-    expect(sheets[0].rows).toEqual([
+    expect(sheets[0].rows.map(({ key, value }) => ({ key, value }))).toEqual([
       { key: 'Count', value: '3' },
-      { key: 'Amp', value: 'rock & roll' }
+      { key: 'Amp', value: 'rock & roll' },
+      { key: 'OnlyKey', value: '' }
     ])
   })
 
@@ -133,7 +140,7 @@ describe('parseXlsx', () => {
         '<row r="2"><c r="A2" t="inlineStr"><is><t>inline</t></is></c><c r="B2" t="str"><v>formula &lt;result&gt;</v></c></row></sheetData></worksheet>'
     )
     const sheets = await parseXlsx(await zip.generateAsync({ type: 'uint8array' }))
-    expect(sheets[0].rows).toEqual([
+    expect(sheets[0].rows.map(({ key, value }) => ({ key, value }))).toEqual([
       { key: '場所', value: '神社、鳥居' },
       { key: 'inline', value: 'formula <result>' }
     ])
@@ -182,7 +189,8 @@ describe('createSpreadsheetSource', () => {
 
   it('lists sheets and keys with their original spelling', () => {
     expect(source.sheetNames()).toEqual(['Locations'])
-    expect(source.listKeys('Locations')).toEqual(['Public locations', 'Parks'])
+    // a key whose column B is empty still exists (row() can read its other columns)
+    expect(source.listKeys('Locations')).toEqual(['Public locations', 'Parks', 'Empty'])
   })
 })
 

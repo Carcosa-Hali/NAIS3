@@ -45,7 +45,7 @@ import {
   updateFragment
 } from './fragments/repo'
 import { resetSequentialCounters } from './fragments/processor'
-import { previewTexts } from './fragments/request'
+import { previewTexts, rollPreview } from './fragments/request'
 import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
@@ -593,6 +593,11 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
       counts: await countPromptTokens(processed, model)
     }
   })
+
+  handle('fragments:rollPreview', async (input) =>
+    // 실제 생성과 같은 규칙으로 한 번 굴려 본다 (오류는 결과로 반환, <*이름> 순차 카운터는 소모하지 않음)
+    rollPreview(input, fragmentSource(), await refreshWorkbook())
+  )
 
   handle('images:showInFolder', ({ filePath }) => {
     if (isUnderImagesRoot(filePath)) shell.showItemInFolder(filePath)

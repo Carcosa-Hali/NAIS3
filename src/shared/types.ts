@@ -58,6 +58,8 @@ export interface GenerationRequest {
   prompt: string
   /** Optional NAIS2-style split prompt parts. prompt is still the merged send text. */
   promptParts?: PromptParts
+  /** Prompt variables rolled for this image (set by fragment preprocessing; stored in the image metadata). */
+  rolledVariables?: RolledVariable[]
   negativePrompt: string
   model: string
   width: number
@@ -269,6 +271,8 @@ export interface ImageMetadata {
   qualityToggle?: boolean
   ucPreset?: number
   characterPrompts?: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
+  /** Prompt variables rolled for this image (NAIS3 fork metadata) */
+  variables?: RolledVariable[]
 }
 
 /** 씬 프리셋 (씬들의 그룹) */
@@ -378,6 +382,35 @@ export interface LibraryStack {
   /** Thumbnail URL of the stack's newest image ('' if none) */
   coverUrl: string
 }
+
+/** A prompt variable as rolled for one image. */
+export interface RolledVariable {
+  name: string
+  value: string
+  /** Expression that reproduces this exact value when written as `$name := <lock>`. */
+  lock: string
+}
+
+/** A fragment line or sheet row that was picked during a roll. */
+export interface RollPick {
+  /** Normalized fragment path or `sheet/key`. */
+  path: string
+  /** Fragment line number or sheet row number. */
+  row?: number
+  /** The picked text (shortened). */
+  text: string
+}
+
+export type RollPreviewResult =
+  | {
+      ok: true
+      prompt: string
+      negativePrompt: string
+      characters: { prompt: string; negativePrompt: string }[]
+      variables: RolledVariable[]
+      picks: RollPick[]
+    }
+  | { ok: false; error: string; variables: RolledVariable[]; picks: RollPick[] }
 
 /** IPC invoke 채널 계약: 채널명 → (요청, 응답) */
 /** 외부 조각 워크북(.xlsx) 상태 — 설정 화면 표시용 */
@@ -507,6 +540,15 @@ export interface IpcInvokeMap {
   }
   /** 모델별 토큰 카운트 (V5=Qwen 3.5, 이전 모델=T5) */
   'tokens:count': { req: { texts: string[]; model: string }; res: { counts: number[] } }
+  /** One random roll of the prompts (fragments, sheets, variables) without generating */
+  'fragments:rollPreview': {
+    req: {
+      prompt: string
+      negativePrompt: string
+      characters: { prompt: string; negativePrompt: string }[]
+    }
+    res: RollPreviewResult
+  }
   /** 히스토리 이미지를 i2i/인페인트 소스로 읽기 */
   'images:readForSource': {
     req: { filePath: string }

@@ -1,5 +1,5 @@
 /**
- * Minimal .xlsx reader: only column A and column B of every worksheet are read.
+ * Minimal .xlsx reader: every cell of every worksheet is read as text (row 1 doubles as the header row).
  * An .xlsx is a zip of XML parts, and jszip is already a dependency, so no spreadsheet library is added.
  *
  * Deliberately lenient: formulas use their cached result, numbers are used as text, errors and
@@ -79,32 +79,35 @@ function columnIndex(letters: string): number {
   return index - 1
 }
 
-function parseSheetRows(xml: string, shared: string[]): ParsedSheet['rows'] {
+function parseSheetRows(xml: string, shared: string[]): Pick<ParsedSheet, 'rows' | 'header'> {
   const rows: ParsedSheet['rows'] = []
+  let header: string[] | undefined
+  let rowPosition = 0
 
-  for (const rowMatch of xml.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
-    const rowXml = rowMatch[1]
+  for (const rowMatch of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+    const rowNumber = Number(parseAttributes(rowMatch[1]).r) || rowPosition + 1
+    rowPosition = rowNumber
+    const rowXml = rowMatch[2]
     if (!rowXml) continue
 
-    let key: string | null = null
-    let value: string | null = null
+    const cells: string[] = []
     let position = 0
-
     for (const cellMatch of rowXml.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attributes = parseAttributes(cellMatch[1])
       const reference = /^([A-Za-z]+)\d*$/.exec(attributes.r ?? '')
       const column = reference ? columnIndex(reference[1].toUpperCase()) : position
       position = column + 1
-      if (column > 1) break // only A and B matter
       const text = cellText(attributes.t, cellMatch[2] ?? '', shared)
-      if (text === null) continue
-      if (column === 0) key = text
-      else value = text
+      if (text !== null) cells[column] = text
     }
+    for (let i = 0; i < cells.length; i++) cells[i] ??= ''
 
-    if (key !== null && value !== null) rows.push({ key, value })
+    if (rowNumber === 1) header = cells
+    if (cells[0] !== undefined && cells[0] !== '') {
+      rows.push({ key: cells[0], value: cells[1] ?? '', cells, row: rowNumber })
+    }
   }
-  return rows
+  return { rows, header: header ?? [] }
 }
 
 function cellText(type: string | undefined, inner: string, shared: string[]): string | null {
@@ -159,7 +162,7 @@ export async function parseXlsx(data: Uint8Array): Promise<ParsedSheet[]> {
     if (!attributes.name || !target) continue
     const xml = await read(entryName(target))
     if (xml === null) continue // chartsheet or missing part
-    sheets.push({ name: decodeXml(attributes.name), rows: parseSheetRows(xml, shared) })
+    sheets.push({ name: decodeXml(attributes.name), ...parseSheetRows(xml, shared) })
   }
   return sheets
 }

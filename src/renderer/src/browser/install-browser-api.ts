@@ -1,5 +1,5 @@
 import type { NaisApi } from '../../../preload/index'
-import { preprocessRequest, previewTexts } from '../../../main/fragments/request'
+import { preprocessRequest, previewTexts, rollPreview } from '../../../main/fragments/request'
 import { resetSequentialCounters } from '../../../main/fragments/processor'
 import { modelCapabilities } from '@shared/nai-models'
 import { applyRandomCharacterPrompt } from '@shared/random-character'
@@ -715,6 +715,10 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel.startsWith('vibes:') || channel.startsWith('crefs:'))
     return refsDispatch(channel, request)
   if (channel === 'tags:search') return gateway('tags', request)
+  if (channel === 'fragments:rollPreview') {
+    const source = browserFragmentSource(await readBrowserState())
+    return rollPreview(request as unknown as Parameters<typeof rollPreview>[0], source)
+  }
   if (channel === 'tokens:count') {
     const source = browserFragmentSource(await readBrowserState())
     return gateway('tokens', {

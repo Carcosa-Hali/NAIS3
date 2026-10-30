@@ -589,4 +589,19 @@ describe('localPromptMetadata', () => {
   it('returns undefined without split prompt parts', () => {
     expect(localPromptMetadata({ ...baseRequest, promptParts: undefined })).toBeUndefined()
   })
+
+  it('records rolled prompt variables, with or without split prompt parts', () => {
+    const rolledVariables = [{ name: 'place', value: 'park', lock: 'row(<places/outdoor#2>)' }]
+    expect(
+      localPromptMetadata({ ...baseRequest, promptParts: undefined, rolledVariables })
+    ).toEqual({ variables: rolledVariables })
+    expect(
+      localPromptMetadata({
+        ...baseRequest,
+        negativePrompt: '',
+        promptParts: parts,
+        rolledVariables
+      })
+    ).toEqual({ promptParts: { ...parts, negative: '' }, variables: rolledVariables })
+  })
 })

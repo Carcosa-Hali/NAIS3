@@ -8,8 +8,8 @@ const first = (): number => 0
 const last = (): number => 0.999
 
 const SCENE_CLUB =
-  'indoors, strip club, runway stage, pole, spotlight, smoke, crowd, audience, silhouette, Patrons clap and hoot.,\n$outfits = lingerie'
-const SCENE_BEACH = 'outdoors, beach, ocean, sunset\n$outfits = swimwear'
+  'indoors, concert hall, stage, spotlight, smoke, crowd, audience, silhouette, The audience claps and cheers.,\n$outfits = formal'
+const SCENE_BEACH = 'outdoors, beach, ocean, sunset\n$outfits = sportswear'
 
 const sheets = createSpreadsheetSource([
   {
@@ -23,8 +23,8 @@ const sheets = createSpreadsheetSource([
   {
     name: 'Outfits',
     rows: [
-      { key: 'lingerie', value: 'red lingerie, garter belt' },
-      { key: 'swimwear', value: 'sports bikini' },
+      { key: 'formal', value: 'black suit, necktie' },
+      { key: 'sportswear', value: 'track jacket' },
       { key: 'casual', value: 'overalls' }
     ]
   }
@@ -33,7 +33,7 @@ const sheets = createSpreadsheetSource([
 const none: FragmentSource = { getLines: () => null }
 
 const CHARACTER =
-  'girl, ${outfits: lingerie => <Outfits/lingerie> | swimwear => <Outfits/swimwear> | * => <Outfits/casual>}'
+  'girl, ${outfits: formal => <Outfits/formal> | sportswear => <Outfits/sportswear> | * => <Outfits/casual>}'
 
 function request(prompt: string, character = CHARACTER, negative = ''): GenerationRequest {
   return {
@@ -68,41 +68,41 @@ describe('$definitions inside a picked cell or fragment', () => {
   it('uses the definition from the chosen cell for blocks elsewhere in the request', () => {
     const out = preprocessRequest(request('2girls, <Scenes/night>'), none, { sheets, rng: first })
     expect(out.prompt).toBe(
-      '2girls, indoors, strip club, runway stage, pole, spotlight, smoke, crowd, audience, silhouette, Patrons clap and hoot., '
+      '2girls, indoors, concert hall, stage, spotlight, smoke, crowd, audience, silhouette, The audience claps and cheers., '
     )
-    expect(out.characterPrompts[0].prompt).toBe('girl, red lingerie, garter belt')
+    expect(out.characterPrompts[0].prompt).toBe('girl, black suit, necktie')
   })
 
   it('follows whichever cell is picked, definition and scene together', () => {
     const out = preprocessRequest(request('2girls, <Scenes/night>'), none, { sheets, rng: last })
     expect(out.prompt).toBe('2girls, outdoors, beach, ocean, sunset')
-    expect(out.characterPrompts[0].prompt).toBe('girl, sports bikini')
+    expect(out.characterPrompts[0].prompt).toBe('girl, track jacket')
   })
 
   it('does not collect definitions from cells that were not picked', () => {
-    // rng picks the first row; the beach row defines swimwear but must not apply
+    // rng picks the first row; the beach row defines sportswear but must not apply
     const out = preprocessRequest(request('<Scenes/night>'), none, { sheets, rng: first })
-    expect(out.characterPrompts[0].prompt).not.toContain('bikini')
+    expect(out.characterPrompts[0].prompt).not.toContain('track jacket')
   })
 
   it('works when the cell is used in the character prompt and blocks come before it', () => {
     const out = preprocessRequest(
-      request('indoors', '${outfits: lingerie => <Outfits/lingerie>}, girl, <Scenes/night>'),
+      request('indoors', '${outfits: formal => <Outfits/formal>}, girl, <Scenes/night>'),
       none,
       { sheets, rng: first }
     )
-    expect(
-      out.characterPrompts[0].prompt.startsWith('red lingerie, garter belt, girl, indoors')
-    ).toBe(true)
+    expect(out.characterPrompts[0].prompt.startsWith('black suit, necktie, girl, indoors')).toBe(
+      true
+    )
   })
 
   it('handles definitions held in saved fragments as well', () => {
     const saved: FragmentSource = {
-      getLines: (path) => (path === 'scene' ? ['rooftop, night\n$outfits = swimwear'] : null)
+      getLines: (path) => (path === 'scene' ? ['rooftop, night\n$outfits = sportswear'] : null)
     }
     const out = preprocessRequest(request('<scene>'), saved, { sheets, rng: first })
     expect(out.prompt).toBe('rooftop, night')
-    expect(out.characterPrompts[0].prompt).toBe('girl, sports bikini')
+    expect(out.characterPrompts[0].prompt).toBe('girl, track jacket')
   })
 
   it('reports a variable defined twice, once by the prompt and once by a cell', () => {
@@ -126,8 +126,8 @@ describe('$definitions inside a picked cell or fragment', () => {
 
   it('previews token text with the cell definition, without throwing', () => {
     const [main, character] = previewTexts(['<Scenes/night>', CHARACTER], none, sheets)
-    expect(main).toContain('strip club')
-    expect(character).toBe('girl, red lingerie, garter belt')
+    expect(main).toContain('concert hall')
+    expect(character).toBe('girl, black suit, necktie')
   })
 })
 
@@ -136,7 +136,7 @@ describe('blocks inside fragments and cells, in any order', () => {
     const saved: FragmentSource = {
       getLines: (path) =>
         path === 'selector'
-          ? ['${outfits: lingerie => <Outfits/lingerie> | * => <Outfits/casual>}']
+          ? ['${outfits: formal => <Outfits/formal> | * => <Outfits/casual>}']
           : null
     }
     const out = preprocessRequest(
@@ -148,12 +148,12 @@ describe('blocks inside fragments and cells, in any order', () => {
       saved,
       { sheets, rng: first }
     )
-    expect(out.characterPrompts[0].prompt).toBe('girl, red lingerie, garter belt')
+    expect(out.characterPrompts[0].prompt).toBe('girl, black suit, necktie')
   })
 
   it('cleans up commas left by a block that resolves to nothing', () => {
     const out = preprocessRequest(
-      request('1girl\n$outfits = lingerie', 'girl, ${outfits: nope => x}, smile', ''),
+      request('1girl\n$outfits = formal', 'girl, ${outfits: nope => x}, smile', ''),
       none,
       { sheets, rng: first }
     ) as GenerationRequest

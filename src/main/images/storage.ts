@@ -93,7 +93,8 @@ export function dropMemoryImage(filePath: string): void {
 /** 원본이 만료됐을 때의 표시 폴백 — DB 썸네일(webp) */
 export function thumbnailByPath(filePath: string): Buffer | null {
   const row = getDb().prepare('SELECT thumbnail FROM images WHERE file_path = ?').get(filePath) as
-    { thumbnail: Buffer | null } | undefined
+    | { thumbnail: Buffer | null }
+    | undefined
   return row?.thumbnail ?? null
 }
 
@@ -130,7 +131,7 @@ export async function saveEphemeralImage(input: {
   seed: number
   kind: 't2i' | 'i2i' | 'inpaint'
   format?: 'png' | 'webp'
-  localMetadata?: Pick<ImageMetadata, 'promptParts'>
+  localMetadata?: Pick<ImageMetadata, 'promptParts' | 'variables'>
 }): Promise<SavedImage> {
   const ext = input.format ?? 'png'
   const filePath = `${MEMORY_PREFIX}${randomUUID()}.${ext}`
@@ -188,7 +189,7 @@ export async function saveGeneratedImage(input: {
   /** 씬이 속한 프리셋 이름 (프리셋 간 동명 씬 충돌 방지) */
   scenePresetName?: string
   /** 전송 payload에는 없는 NAIS3 전용 왕복 메타데이터 */
-  localMetadata?: Pick<ImageMetadata, 'promptParts'>
+  localMetadata?: Pick<ImageMetadata, 'promptParts' | 'variables'>
 }): Promise<SavedImage> {
   const now = new Date()
   // 여기 오면 항상 실제 폴더에 저장한다. 자동저장 OFF의 "저장 안 함" 판정은
@@ -260,7 +261,7 @@ export async function saveGeneratedImage(input: {
 
 function payloadWithLocalMetadata(
   sentPayload: string,
-  localMetadata?: Pick<ImageMetadata, 'promptParts'>
+  localMetadata?: Pick<ImageMetadata, 'promptParts' | 'variables'>
 ): string {
   if (!localMetadata) return sentPayload
   try {
@@ -303,7 +304,10 @@ function textChunk(keyword: string, value: string): Buffer {
   return out
 }
 
-function injectNais3Params(png: Buffer, meta: Pick<ImageMetadata, 'promptParts'>): Buffer {
+function injectNais3Params(
+  png: Buffer,
+  meta: Pick<ImageMetadata, 'promptParts' | 'variables'>
+): Buffer {
   if (png.length < 33 || !png.subarray(0, 8).equals(PNG_SIG)) return png
   const value = Buffer.from(JSON.stringify({ version: 1, ...meta }), 'utf8').toString('base64')
   const chunk = textChunk(NAIS3_KEYWORD, value)
@@ -343,6 +347,7 @@ export function listImages(limit: number, offset: number): { items: HistoryItem[
 
 export function getImagePayload(id: number): string | null {
   const row = getDb().prepare('SELECT payload_json FROM images WHERE id = ?').get(id) as
-    { payload_json: string } | undefined
+    | { payload_json: string }
+    | undefined
   return row?.payload_json ?? null
 }

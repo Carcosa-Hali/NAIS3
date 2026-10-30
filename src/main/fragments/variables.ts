@@ -15,15 +15,39 @@
  * contain `<fragments>`, `<Sheet/Key>` and nested `${...}` blocks. No matching branch and no `*` -> nothing.
  * Names and labels are case-insensitive. `$Name = ...` lines are removed from the prompt before it is sent.
  *
+ * More forms:
+ *
+ *   $Mood = random(calm @3, tense @1)                -> " @n" sets an option's relative weight (default 1)
+ *   $Place = row(<Sheet/Key>)                        -> picks one row; ${Place} = its column B,
+ *                                                       ${Place.header_name} = any other column of that row
+ *   $Place = row(<*Sheet/Key>)                       -> walks the rows in order instead
+ *   $Mood := calm                                    -> fixed value: wins over every "=" definition of Mood
+ *   <Sheet/${Place.category}_${Mood} ?? Sheet/default>  -> references may use variables (looked up after rolling)
+ *
+ * Definitions are rolled in the order they were collected, so an expression may use `${...}` of a variable
+ * defined before it (e.g. `$Outfit = random(<Outfits/${Place.category}>)`).
+ *
  * Pure module (no Electron / fs).
  */
 
-import { normalizeFragmentPath } from '../../shared/fragment-path'
-import type { FragmentSource } from './processor'
+import type { RolledVariable } from '../../shared/types'
+import {
+  lookupAlternatives,
+  nextSequentialIndex,
+  pickWeighted,
+  splitWeight,
+  type FragmentEntry,
+  type FragmentSource
+} from './processor'
 
 const NAME = String.raw`[\p{L}_][\p{L}\p{N}_]*`
-const DEFINITION_LINE = new RegExp(String.raw`^\s*\$(${NAME})\s*=\s*(.*?)\s*$`, 'u')
-const BLOCK_BODY = new RegExp(String.raw`^\s*(${NAME})\s*(?::([\s\S]*))?$`, 'u')
+const DEFINITION_LINE = new RegExp(String.raw`^\s*\$(${NAME})\s*(:=|=)\s*(.*?)\s*$`, 'u')
+/** `name` or `name.field` (a column of a row() variable). */
+const BLOCK_BODY = new RegExp(
+  String.raw`^\s*(${NAME}(?:\.[\p{L}\p{N}_]+)?)\s*(?::([\s\S]*))?$`,
+  'u'
+)
+const REFERENCE = /^<\s*(\*)?([^<>]*)>$/
 const MAX_DEPTH = 10
 
 export class PromptVariableError extends Error {
@@ -36,16 +60,25 @@ export class PromptVariableError extends Error {
 export interface VariableDefinition {
   name: string
   expression: string
+  /** `$Name := ...`: overrides every ordinary definition of the same name. */
+  fixed?: boolean
 }
 
-/** Pulls `$Name = ...` lines out of `text`, appending them to `into`. Returns the remaining text. */
+export type { RolledVariable }
+
+/** Pulls `$Name = ...` / `$Name := ...` lines out of `text`, appending them to `into`. Returns the remaining text. */
 export function extractVariableDefinitions(text: string, into: VariableDefinition[]): string {
   if (!text.includes('$')) return text
   const kept: string[] = []
   for (const line of text.split('\n')) {
     const match = DEFINITION_LINE.exec(line)
-    if (match) into.push({ name: match[1], expression: match[2] })
-    else kept.push(line)
+    if (match) {
+      into.push(
+        match[2] === ':='
+          ? { name: match[1], expression: match[3], fixed: true }
+          : { name: match[1], expression: match[3] }
+      )
+    } else kept.push(line)
   }
   return kept.join('\n')
 }
@@ -95,57 +128,224 @@ function splitTopLevel(text: string, separator: string): string[] {
 }
 
 export interface RollOptions {
-  /** Resolves `<name>` / `<Sheet/Key>` inside random(...). */
+  /** Resolves `<name>` / `<Sheet/Key>` inside random(...) and row(...). */
   source: FragmentSource
   rng: () => number
   /** true: problems throw PromptVariableError (generation). false: problems yield an empty value (previews). */
   strict: boolean
+  /** true: `row(<*...>)` reads its next row without advancing the walk (previews). */
+  peek?: boolean
+  /** Prepares an expression before it is evaluated (resolves `${...}` of variables rolled so far). */
+  prepare?: (expression: string, values: ReadonlyMap<string, string>) => string
+  /** Receives every rolled variable, in rolling order. */
+  record?: (variable: RolledVariable) => void
 }
 
 function fail(strict: boolean, message: string): void {
   if (strict) throw new PromptVariableError(message)
 }
 
-function expandPool(args: string, options: RollOptions): string[] {
-  const pool: string[] = []
+/** Key under which a row() variable's column names are kept, for error messages. Cannot clash with a name. */
+const columnsKey = (id: string): string => `${id}.`
+
+interface PoolItem {
+  text: string
+  weight: number
+  lock: string
+  from?: { path: string; entry: FragmentEntry }
+}
+
+function referenceLock(path: string, entry: FragmentEntry): string {
+  return entry.row !== undefined ? `<${path}#${entry.row}>` : `<${path}>`
+}
+
+function expandPool(args: string, options: RollOptions, name: string): PoolItem[] {
+  const pool: PoolItem[] = []
   for (const raw of splitTopLevel(args, ',')) {
-    const arg = raw.trim()
-    if (!arg) continue
-    const reference = /^<([^<>]+)>$/.exec(arg)
-    if (!reference) {
-      pool.push(arg)
+    const { text: arg, weight } = splitWeight(raw)
+    if (!arg || weight <= 0) continue
+    const reference = REFERENCE.exec(arg)
+    if (!reference || reference[1]) {
+      pool.push({ text: arg, weight, lock: arg })
       continue
     }
-    const lines = options.source.getLines(normalizeFragmentPath(reference[1]))
-    if (lines && lines.length > 0) pool.push(...lines.map((line) => line.trim()).filter(Boolean))
-    else fail(options.strict, `random(): <${reference[1].trim()}> has no entries.`)
+    const found = lookupAlternatives(options.source, reference[2].split('??'), (entries) =>
+      entries.some((entry) => entry.line.trim())
+    )
+    if (found === null) continue // `<A ?? >`: nothing
+    const entries = found.entries?.filter((entry) => entry.line.trim()) ?? []
+    if (entries.length === 0) {
+      fail(options.strict, `Variable "${name}": random(): <${reference[2].trim()}> has no entries.`)
+      continue
+    }
+    for (const entry of entries) {
+      pool.push({
+        text: entry.line.trim(),
+        weight: weight * entry.weight,
+        lock: `random(${referenceLock(found.path, entry)})`,
+        from: { path: found.path, entry }
+      })
+    }
   }
   return pool
 }
 
-/** Rolls every definition once. Variable names are case-insensitive. */
+interface PickedRow {
+  path: string
+  entry: FragmentEntry
+}
+
+/** row(<Sheet/Key>): one row, following a picked cell that is only another reference (`<Other/Key>`). */
+function pickRow(argument: string, options: RollOptions, name: string): PickedRow | null {
+  let reference = REFERENCE.exec(argument.trim())
+  if (!reference) {
+    fail(options.strict, `Variable "${name}": row() takes one reference, like row(<Sheet/Key>).`)
+    return null
+  }
+  for (let depth = 0; depth <= MAX_DEPTH; depth++) {
+    const sequential = Boolean(reference[1])
+    const found = lookupAlternatives(options.source, reference[2].split('??'))
+    if (found === null) return null // `<A ?? >`: nothing
+    const entries = found.entries ?? []
+    if (entries.length === 0) {
+      fail(options.strict, `Variable "${name}": row(): <${reference[2].trim()}> has no rows.`)
+      return null
+    }
+    const entry = sequential
+      ? entries[nextSequentialIndex(found.path, entries.length, options.peek === true)]
+      : entries[
+          pickWeighted(
+            entries.map((e) => e.weight),
+            options.rng
+          )
+        ]
+    options.source.onPick?.(found.path, entry)
+
+    // A cell holding nothing but another sheet reference (an index sheet pointing at the real rows): follow it.
+    const inner = REFERENCE.exec(entry.line.trim())
+    if (!inner || inner[2].includes('|') || !inner[2].includes('/')) {
+      return { path: found.path, entry }
+    }
+    reference = inner
+  }
+  fail(options.strict, `Variable "${name}": row() references are nested too deeply.`)
+  return null
+}
+
+function evaluate(
+  name: string,
+  expression: string,
+  options: RollOptions
+): { value: string; lock: string; fields?: ReadonlyMap<string, string> } {
+  const random = /^random\s*\(([\s\S]*)\)$/i.exec(expression)
+  if (random) {
+    const pool = expandPool(random[1], options, name)
+    if (pool.length === 0) {
+      fail(options.strict, `Variable "${name}": random() has no options.`)
+      return { value: '', lock: '' }
+    }
+    const item =
+      pool[
+        pickWeighted(
+          pool.map((p) => p.weight),
+          options.rng
+        )
+      ]
+    if (item.from) options.source.onPick?.(item.from.path, item.from.entry)
+    return { value: item.text, lock: item.lock }
+  }
+
+  const row = /^row\s*\(([\s\S]*)\)$/i.exec(expression)
+  if (row) {
+    const picked = pickRow(row[1], options, name)
+    if (!picked) return { value: '', lock: '', fields: new Map() }
+    return {
+      value: picked.entry.line,
+      lock: `row(${referenceLock(picked.path, picked.entry)})`,
+      fields: picked.entry.fields ?? new Map()
+    }
+  }
+
+  if (!expression) fail(options.strict, `Variable "${name}" has no value.`)
+  return { value: expression, lock: expression }
+}
+
+/**
+ * Rolls every definition once, in order (fixed `:=` definitions first). Variable names are case-insensitive.
+ * A row() variable also sets `name.field` for every column of its row.
+ */
 export function rollVariables(
   definitions: VariableDefinition[],
   options: RollOptions
 ): Map<string, string> {
   const values = new Map<string, string>()
-  for (const { name, expression } of definitions) {
+  const fixed = new Set<string>()
+  const seen = new Set<string>()
+  const ordered: VariableDefinition[] = []
+
+  for (const definition of definitions) {
+    if (!definition.fixed) continue
+    const id = definition.name.toLowerCase()
+    if (fixed.has(id)) {
+      fail(options.strict, `Variable "${definition.name}" is fixed (:=) more than once.`)
+      continue
+    }
+    fixed.add(id)
+    ordered.push(definition)
+  }
+  for (const definition of definitions) {
+    if (definition.fixed) continue
+    const id = definition.name.toLowerCase()
+    if (seen.has(id) && !fixed.has(id)) {
+      fail(options.strict, `Variable "${definition.name}" is defined more than once.`)
+      continue
+    }
+    seen.add(id)
+    if (!fixed.has(id)) ordered.push(definition)
+  }
+
+  for (const { name, expression } of ordered) {
     const id = name.toLowerCase()
-    if (values.has(id)) {
-      fail(options.strict, `Variable "${name}" is defined more than once.`)
-      continue
+    let prepared = expression
+    if (options.prepare) {
+      try {
+        prepared = options.prepare(expression, values)
+      } catch (error) {
+        if (error instanceof PromptVariableError) {
+          throw new PromptVariableError(
+            `In "$${name} = ${expression.slice(0, 60)}": ${error.message} Definitions are rolled in order, so an expression can only use variables defined before it.`
+          )
+        }
+        throw error
+      }
     }
-    const random = /^random\s*\(([\s\S]*)\)$/i.exec(expression)
-    if (!random) {
-      if (!expression) fail(options.strict, `Variable "${name}" has no value.`)
-      values.set(id, expression)
-      continue
+    const result = evaluate(name, prepared.trim(), options)
+    values.set(id, result.value)
+    if (result.fields) {
+      for (const [field, text] of result.fields) values.set(`${id}.${field}`, text)
+      values.set(columnsKey(id), [...result.fields.keys()].join(', '))
     }
-    const pool = expandPool(random[1], options)
-    if (pool.length === 0) fail(options.strict, `Variable "${name}": random() has no options.`)
-    values.set(id, pool.length > 0 ? pool[Math.floor(options.rng() * pool.length)] : '')
+    options.record?.({ name, value: result.value, lock: result.lock })
   }
   return values
+}
+
+/**
+ * Index of the ">" closing a `<reference>` that starts at `open`, or -1 when it is not a reference.
+ * `${...}` blocks inside it are skipped, so their `=>` arrows do not end the reference.
+ */
+function findReferenceEnd(text: string, open: number): number {
+  for (let i = open + 1; i < text.length; i++) {
+    if (text.startsWith('${', i)) {
+      const end = findBlockEnd(text, i + 1)
+      if (end < 0) return -1
+      i = end
+      continue
+    }
+    if (text[i] === '<' || text[i] === '\n') return -1
+    if (text[i] === '>') return i
+  }
+  return -1
 }
 
 /** Index of the "}" closing the "{" at `open`, or -1. */
@@ -179,28 +379,48 @@ export function tidyCommas(text: string): string {
 export class BlockStore {
   private readonly blocks: string[] = []
 
-  /** Replaces each top-level `${...}` block with a placeholder. An unclosed block is an error (strict) or left as text. */
+  /**
+   * Replaces each top-level `${...}` block, and each `<reference>` that contains a `${...}` block, with a
+   * placeholder. An unclosed block is an error (strict) or left as text.
+   */
   mask(text: string, strict: boolean): string {
     if (!text.includes('${')) return text
     let out = ''
-    let cursor = 0
-    while (cursor < text.length) {
-      const start = text.indexOf('${', cursor)
-      if (start < 0) {
-        out += text.slice(cursor)
-        break
+    let i = 0
+    while (i < text.length) {
+      if (text.startsWith('${', i)) {
+        const end = findBlockEnd(text, i + 1)
+        if (end < 0) {
+          fail(strict, `Unclosed "\${" near: ${text.slice(i, i + 40)}`)
+          out += text.slice(i)
+          break
+        }
+        out += this.hold(text.slice(i, end + 1))
+        i = end + 1
+        continue
       }
-      out += text.slice(cursor, start)
-      const end = findBlockEnd(text, start + 1)
-      if (end < 0) {
-        fail(strict, `Unclosed "\${" near: ${text.slice(start, start + 40)}`)
-        out += text.slice(start)
-        break
+      if (text[i] === '<') {
+        const end = findReferenceEnd(text, i)
+        if (end > 0) {
+          const reference = text.slice(i, end + 1)
+          out += reference.includes('${') ? this.hold(reference) : reference
+          i = end + 1
+          continue
+        }
       }
-      out += `${OPEN}${this.blocks.push(text.slice(start, end + 1)) - 1}${CLOSE}`
-      cursor = end + 1
+      out += text[i]
+      i++
     }
     return out
+  }
+
+  /** Puts the original text of every placeholder back (for definition expressions). */
+  restore(text: string): string {
+    return text.replace(PLACEHOLDER, (_match, index: string) => this.blocks[Number(index)] ?? '')
+  }
+
+  private hold(text: string): string {
+    return `${OPEN}${this.blocks.push(text) - 1}${CLOSE}`
   }
 
   /**
@@ -296,10 +516,22 @@ function evaluateBlock(
   const [, name, branchText] = parsed
   const value = values.get(name.toLowerCase())
   if (value === undefined) {
-    fail(
-      strict,
-      `Variable "${name}" is not defined (add a line like "$${name} = random(A, B, C)").`
-    )
+    const dot = name.indexOf('.')
+    const owner = dot > 0 ? name.slice(0, dot).toLowerCase() : null
+    const columns = owner !== null ? values.get(columnsKey(owner)) : undefined
+    if (columns !== undefined) {
+      fail(
+        strict,
+        `"${name}": the row picked for "${name.slice(0, dot)}" has no column "${name.slice(dot + 1)}". Columns: ${columns || '(none)'}.`
+      )
+    } else if (owner !== null && values.has(owner)) {
+      fail(strict, `"${name}": "${name.slice(0, dot)}" is not a row(...) variable.`)
+    } else {
+      fail(
+        strict,
+        `Variable "${name}" is not defined (add a line like "$${name} = random(A, B, C)").`
+      )
+    }
     return ''
   }
   if (branchText === undefined) return value
