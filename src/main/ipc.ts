@@ -72,6 +72,7 @@ import {
 import { listImages, getImagePayload, saveGeneratedImage } from './images/storage'
 import {
   enqueueReservedScenes,
+  bindSceneReservationRecovery,
   listPresets,
   createPreset,
   renamePreset,
@@ -234,7 +235,7 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
       reason: 'added',
       label: account.label
     })
-    return { ...result, accountId: account.id }
+    return { ...result, accountId: account.id, label: account.label }
   })
   handle('nai:setActiveAccount', async ({ id }) => {
     const active = setActiveNaiAccount(id)
@@ -496,7 +497,7 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   handle('library:exportStack', async ({ id }) => ({ count: await exportLibraryStack(id) }))
 
   handle('scenes:exportJson', async ({ presetId }) => ({ saved: await exportScenesJson(presetId) }))
-  handle('scenes:importJson', async ({ presetId }) => ({ count: await importScenesJson(presetId) }))
+  handle('scenes:importJson', ({ presetId }) => importScenesJson(presetId))
   handle('scenes:exportZip', async ({ presetId }) => ({ count: await exportZip(presetId) }))
 
   handle('settings:get', ({ key }) => ({ value: getSetting(key) }))
@@ -910,5 +911,6 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
     for (const win of BrowserWindow.getAllWindows()) win.setBackgroundColor(color)
   })
 
+  bindSceneReservationRecovery(ctx.queue, () => broadcast('scenes:reservationsChanged', {}))
   ctx.queue.on('changed', (status) => broadcast('queue:changed', status))
 }

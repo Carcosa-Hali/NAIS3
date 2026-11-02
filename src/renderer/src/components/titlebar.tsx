@@ -8,15 +8,23 @@ import {
   PanelRight,
   Settings,
   Square,
+  Ticket,
   X
 } from 'lucide-react'
+import { motion } from 'motion/react'
 import { cn } from '../lib/utils'
 import { useT } from '../lib/i18n'
 import { useGenerationStore } from '../stores/generation-store'
 import { useLayoutStore } from '../stores/layout-store'
 import { useUpdateStore } from '../stores/update-store'
 import { useVibesStore, useCharRefsStore } from '../stores/refs-store'
-import { displayOpusUsagePercent, effectiveGenerationStrength, estimateAnlas } from '@shared/anlas'
+import {
+  displayOpusUsagePercent,
+  effectiveGenerationStrength,
+  estimateAnlas,
+  formatOpusUsageRefill,
+  opusUsagePurchasedPercent
+} from '@shared/anlas'
 import { inpaintingModelFor, modelCapabilities } from '@shared/nai-models'
 import { snapNaiResolution } from '@shared/nai-resolution'
 import { PageNav } from './page-nav'
@@ -106,21 +114,85 @@ function OpusUsageChip(): React.JSX.Element | null {
   const model = useGenerationStore((s) => s.request.model)
   if (subscriptionTier !== 'opus' || !usage || !model.startsWith('nai-diffusion-5-')) return null
   const percent = displayOpusUsagePercent(usage)
-  const hours = Math.max(0, usage.timeUntilNextPercent / 3600)
+  const purchased = opusUsagePurchasedPercent(usage)
+  const refill = formatOpusUsageRefill(usage, t)
+  const status = usage.isNegative
+    ? `${t('ui.v5RechargeGaugeDepletedAnlasIsUsedUntilItRecharges')} · ${refill}`
+    : t('ui.v5OpusRechargeGaugeValue', refill)
+  // 기본 게이지를 먼저 쓰고 추가 사용량은 그다음 — 소모 순서대로 왼쪽부터 놓는다.
+  // 추가 사용량은 부스트 1개(100%)당 한 칸씩, 최대 400%라 네 칸 — 한 막대로 400%를 그리면
+  // 부스트 1개가 1/4밖에 안 차 보인다.
+  // 게이지까지 다 그리면 폭이 늘어 중앙 탭과 겹치므로, 2xl 미만 폭에서는 숫자만 남긴다.
+  const meterVisibility = purchased > 0 ? 'hidden 2xl:block' : undefined
+  const title = purchased > 0 ? `${status} · ${t('ui.v5ExtraUsageValue', purchased)}` : status
   return (
     <span
       className="no-drag flex items-center gap-1.5 rounded-md bg-surface-2 px-2 py-0.5 font-mono text-[11.5px] text-muted"
-      title={
-        usage.isNegative
-          ? t('ui.v5RechargeGaugeDepletedAnlasIsUsedUntilItRecharges')
-          : t('ui.v5OpusRechargeGaugeAboutValueHUntilTheNext1', hours.toFixed(1))
-      }
+      title={title}
     >
+      {/* 화면의 숫자만으로는 어느 쪽이 추가 사용량인지 알 수 없어, 스크린 리더에는 title과 같은
+          설명을 숫자와 함께 읽히고 눈에 보이는 게이지·숫자는 숨긴다 */}
+      <span className="sr-only">{`${t('ui.v5Usage')} ${percent}% · ${title}`}</span>
       <BatteryCharging
         size={12}
         className={usage.isNegative ? 'text-danger-ink' : 'text-accent-ink'}
       />
-      {percent}%
+      <UsageMeter
+        fill={percent / 100}
+        className={cn('w-8', meterVisibility)}
+        barClassName={usage.isNegative ? 'bg-danger' : 'bg-accent'}
+      />
+      <span aria-hidden>{percent}%</span>
+      {purchased > 0 && (
+        <>
+          <span aria-hidden className="h-3 w-px bg-faint" />
+          <Ticket size={12} className="text-hue-violet" />
+          <span className="hidden gap-0.5 2xl:flex">
+            {Array.from({ length: MAX_PURCHASED_PERCENT / 100 }, (_, index) => (
+              <UsageMeter
+                key={index}
+                fill={(purchased - index * 100) / 100}
+                className="w-3"
+                barClassName="bg-hue-violet"
+              />
+            ))}
+          </span>
+          <span aria-hidden>{purchased}%</span>
+        </>
+      )}
+    </span>
+  )
+}
+
+/** NAI 웹 `MaxPurchasedPercent` — 추가 사용량 칸의 최대치 */
+const MAX_PURCHASED_PERCENT = 400
+
+function UsageMeter({
+  fill,
+  className,
+  barClassName
+}: {
+  fill: number
+  className: string
+  barClassName: string
+}): React.JSX.Element {
+  // 빈 트랙(paper)은 칩 배경(surface-2)과 대비가 1.2:1뿐이라, 3:1이 보장된 faint 테두리로
+  // 칸 경계를 그린다 — 추가 사용량 100%일 때 남은 칸도 보이도록
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'h-1.5 overflow-hidden rounded-full bg-paper inset-ring inset-ring-faint',
+        className
+      )}
+    >
+      <span
+        className={cn(
+          'block h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none',
+          barClassName
+        )}
+        style={{ width: `${Math.min(1, Math.max(0, fill)) * 100}%` }}
+      />
     </span>
   )
 }
@@ -142,6 +214,54 @@ function BarButton({
   )
 }
 
+/** 개발 서버로 띄운 창임을 표시 (배포 빌드엔 없음) */
+function DevBadge(): React.JSX.Element | null {
+  if (!import.meta.env.DEV) return null
+  return (
+    <span
+      className="no-drag ml-1 rounded-md border border-accent/40 bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] text-accent-ink"
+      title="Development mode"
+    >
+      DEV
+    </span>
+  )
+}
+
+/** 개발 서버 전용 — 온보딩을 다시 띄워 확인하는 테스트용 버튼 (배포 빌드엔 없음, 개발용이라 번역하지 않는다) */
+function DevOnboardingButton(): React.JSX.Element | null {
+  if (!import.meta.env.DEV) return null
+  return (
+    <BarButton
+      className="w-auto px-2 text-[12px]"
+      onClick={() => useLayoutStore.setState({ onboardingOpen: true })}
+    >
+      Force onboarding
+    </BarButton>
+  )
+}
+
+/** Windows 창 컨트롤(─ □ ✕). macOS는 시스템 신호등을 쓴다 */
+function WindowControls(): React.JSX.Element {
+  const t = useT()
+  return (
+    <div className="no-drag ml-1 flex items-center">
+      <BarButton className="w-9" onClick={() => ctrl('minimize')} aria-label={t('ui.minimize')}>
+        <Minus size={15} />
+      </BarButton>
+      <BarButton className="w-9" onClick={() => ctrl('maximize')} aria-label={t('ui.maximize')}>
+        <Square size={12} />
+      </BarButton>
+      <BarButton
+        className="w-9 hover:bg-window-close hover:text-white"
+        onClick={() => ctrl('close')}
+        aria-label={t('ui.close')}
+      >
+        <X size={15} />
+      </BarButton>
+    </div>
+  )
+}
+
 export function Titlebar(): React.JSX.Element {
   const t = useT()
   const leftOpen = useLayoutStore((s) => s.leftOpen)
@@ -149,6 +269,8 @@ export function Titlebar(): React.JSX.Element {
   const toggleLeft = useLayoutStore((s) => s.toggleLeft)
   const toggleRight = useLayoutStore((s) => s.toggleRight)
   const setSettingsOpen = useLayoutStore((s) => s.setSettingsOpen)
+  const onboardingOpen = useLayoutStore((s) => s.onboardingOpen)
+  const onboardingFinished = useLayoutStore((s) => s.onboardingFinished)
   const anlasBalance = useGenerationStore((s) => s.anlasBalance)
   const opusUsage = useGenerationStore((s) => s.opusUsage)
 
@@ -185,10 +307,29 @@ export function Titlebar(): React.JSX.Element {
     unencodedVibes: capabilities.vibes ? unencodedVibes : 0
   }).total
 
+  // 첫 실행 온보딩 중엔 창 컨트롤(과 DEV 표시)만 — 앱 기능은 온보딩을 마친 뒤에 드러낸다.
+  // 바탕은 투명하게 두어 온보딩 배경 무늬가 창 맨 위까지 이어지게 (배경보다 위에 그린다)
+  if (onboardingOpen) {
+    return (
+      <header
+        className="drag relative z-10 flex h-14 shrink-0 select-none items-center px-2"
+        style={{ paddingLeft: isMac ? 90 : undefined }}
+      >
+        <DevBadge />
+        <div className="flex-1" />
+        {!isMac && <WindowControls />}
+      </header>
+    )
+  }
+
   return (
-    <header
+    <motion.header
       className="drag relative flex h-14 shrink-0 select-none items-center gap-1 bg-paper px-2"
       style={{ paddingLeft: isMac ? 90 : undefined }}
+      // 온보딩을 막 마쳤으면 작업 화면과 함께 페이드인
+      initial={onboardingFinished ? { opacity: 0 } : false}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
     >
       {/* 네비게이션 — 타이틀바 중앙 (컨테이너는 pointer-events-none, PageNav만 클릭 가능) */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -201,14 +342,8 @@ export function Titlebar(): React.JSX.Element {
 
       <UpdateButton />
 
-      {import.meta.env.DEV && (
-        <span
-          className="no-drag ml-1 rounded-md border border-accent/40 bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-[0.14em] text-accent-ink"
-          title="Development mode"
-        >
-          DEV
-        </span>
-      )}
+      <DevBadge />
+      <DevOnboardingButton />
 
       {/* Windows는 우측에 창 컨트롤(─ □ ✕)이 있어 테마·Anlas를 좌측에 배치 */}
       {!isMac && (
@@ -242,23 +377,7 @@ export function Titlebar(): React.JSX.Element {
         <Settings size={15} />
       </BarButton>
 
-      {!isMac && (
-        <div className="no-drag ml-1 flex items-center">
-          <BarButton className="w-9" onClick={() => ctrl('minimize')} aria-label={t('ui.minimize')}>
-            <Minus size={15} />
-          </BarButton>
-          <BarButton className="w-9" onClick={() => ctrl('maximize')} aria-label={t('ui.maximize')}>
-            <Square size={12} />
-          </BarButton>
-          <BarButton
-            className="w-9 hover:bg-window-close hover:text-white"
-            onClick={() => ctrl('close')}
-            aria-label={t('ui.close')}
-          >
-            <X size={15} />
-          </BarButton>
-        </div>
-      )}
-    </header>
+      {!isMac && <WindowControls />}
+    </motion.header>
   )
 }

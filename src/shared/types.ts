@@ -98,10 +98,18 @@ export interface PromptParts {
 
 export type QueueItemState = 'pending' | 'generating' | 'done' | 'failed' | 'cancelled'
 
+export interface SceneReservation {
+  sceneId: number
+  /** Empty string means the sidebar cast. */
+  castId: string
+}
+
 export interface QueueItem {
   id: string
   state: QueueItemState
   request: GenerationRequest
+  /** Only reservation handoffs carry this; ad-hoc generations must not restore reservations. */
+  reservation?: SceneReservation
   error?: string
   /** 생성 완료 시 저장된 이미지 파일 경로 */
   filePath?: string
@@ -126,8 +134,13 @@ export interface OpusUsageStatus {
   percent: number
   /** True once the allowance is exhausted and V5 falls back to Anlas. */
   isNegative: boolean
-  /** Seconds until the server adds the next percentage point. */
+  /**
+   * Seconds per +1% (the refill period, not a countdown). 0 while the refill is paused,
+   * which the server reports at or above 100%.
+   */
   timeUntilNextPercent: number
+  /** Extra Usage bought with boosts, spent after the regular allowance (0–400). */
+  purchasedPercent?: number
 }
 
 export interface SubscriptionInfo {
@@ -135,6 +148,8 @@ export interface SubscriptionInfo {
   anlasFixed: number
   anlasPurchased: number
   usage?: OpusUsageStatus
+  /** 유료 구독이 만료됨 — tier는 paper로 내려가고 V5 게이지도 쓸 수 없다 */
+  expired?: boolean
 }
 
 /** 렌더러에 노출되는 NAI 계정 메타. 실제 토큰은 명시적으로 공개할 때만 전달한다. */
@@ -211,6 +226,9 @@ export interface HistoryItem {
 }
 
 /** 디렉터 툴 (augment-image req_type) */
+/** 디렉터 로컬 툴(API 없음) 결과의 히스토리 kind */
+export type LocalEditKind = 'mosaic' | 'pixelate'
+
 export type DirectorMethod =
   | 'bg-removal'
   | 'lineart'
@@ -445,6 +463,8 @@ export interface IpcInvokeMap {
     res: {
       valid: boolean
       accountId?: string
+      /** 저장된 계정 이름 — 잔액까지 묻는 nai:listAccounts 없이 바로 보여 줄 수 있게 */
+      label?: string
       subscription?: SubscriptionInfo
       error?: string
     }
@@ -586,7 +606,7 @@ export interface IpcInvokeMap {
   }
   /** 렌더러 로컬 편집 결과(base64 PNG)를 히스토리에 저장 — 모자이크 등 API 없는 디렉터 로컬 툴용 */
   'images:saveLocal': {
-    req: { base64: string; kind: 'mosaic' }
+    req: { base64: string; kind: LocalEditKind }
     res: { filePath: string } | { error: string }
   }
   /** 이미지 메타데이터 읽기 (filePath는 우리 파일, base64는 외부 드롭). PNG tEXt→DB→stealth */
@@ -696,7 +716,11 @@ export interface IpcInvokeMap {
   'scenes:openFolder': { req: { sceneId: number }; res: { ok: boolean } }
   /** 씬 JSON 내보내기/불러오기 (파일 다이얼로그, 활성 프리셋 기준) */
   'scenes:exportJson': { req: { presetId: number }; res: { saved: boolean } }
-  'scenes:importJson': { req: { presetId: number }; res: { count: number } }
+  'scenes:importJson': {
+    req: { presetId: number }
+    /** unrecognized = 알 수 없는 JSON 형식, canceled = 파일을 고르지 않음 */
+    res: { count: number; unrecognized?: boolean; canceled?: boolean }
+  }
   /** 즐겨찾기 이미지 또는 각 씬 최상단 이미지를 ZIP으로 (파일 다이얼로그) */
   /** 활성 프리셋 ZIP 내보내기 (NAIS2 방식 — 씬별 즐겨찾기 전부, 없으면 최상단 1장) */
   'scenes:exportZip': { req: { presetId: number }; res: { count: number } }
@@ -796,6 +820,7 @@ export interface IpcEventMap {
   }
   /** 씬에 새 이미지가 생성됨 (목록/상세 갱신). filePath로 카드 즉시 낙관적 갱신 */
   'scenes:changed': { sceneId: number; filePath: string }
+  'scenes:reservationsChanged': Record<string, never>
   /** 바이브 인코딩 완료 — 카드의 인코딩 표시 갱신용 */
   'vibes:encoded': Record<string, never>
   /** 자동 업데이트 상태 (GitHub release) */
