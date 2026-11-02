@@ -1,7 +1,9 @@
-import { Check, ClipboardCopy } from 'lucide-react'
+import { Check, ClipboardCopy, Pin } from 'lucide-react'
 import { useState } from 'react'
 import type { RolledVariable } from '@shared/types'
 import { useT } from '../lib/i18n'
+import { usePinsStore } from '../stores/pins-store'
+import { cn } from '../lib/utils'
 
 /** `$name := lock` lines: pasted into the main prompt they reproduce exactly these values. */
 export function fixedValueLines(variables: RolledVariable[]): string {
@@ -16,23 +18,44 @@ export function RolledVariablesList({
 }): React.JSX.Element | null {
   const t = useT()
   const [copied, setCopied] = useState(false)
+  const pins = usePinsStore((s) => s.pins)
+  const pin = usePinsStore((s) => s.pin)
+  const pinMany = usePinsStore((s) => s.pinMany)
+  const unpin = usePinsStore((s) => s.unpin)
   if (variables.length === 0) return null
+  const pinOf = (v: RolledVariable): boolean =>
+    pins.some((p) => p.name.toLowerCase() === v.name.toLowerCase() && p.lock === v.lock)
+  const asPin = (v: RolledVariable): { name: string; lock: string; label: string } => ({
+    name: v.name,
+    lock: v.lock,
+    label: v.value.replace(/\s+/g, ' ').trim().slice(0, 120) || v.lock
+  })
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[12px] font-medium text-ink">{t('ui.rolledVariables')}</p>
-        <button
-          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-2 hover:text-ink"
-          title={t('ui.copyAsFixedValuesHint')}
-          onClick={() => {
-            void navigator.clipboard.writeText(fixedValueLines(variables))
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
-          }}
-        >
-          {copied ? <Check size={12} /> : <ClipboardCopy size={12} />}
-          {t('ui.copyAsFixedValues')}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-2 hover:text-ink"
+            title={t('ui.pinAllHint')}
+            onClick={() => pinMany(variables.map(asPin))}
+          >
+            <Pin size={12} />
+            {t('ui.pinAll')}
+          </button>
+          <button
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-faint transition-colors hover:bg-surface-2 hover:text-ink"
+            title={t('ui.copyAsFixedValuesHint')}
+            onClick={() => {
+              void navigator.clipboard.writeText(fixedValueLines(variables))
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1200)
+            }}
+          >
+            {copied ? <Check size={12} /> : <ClipboardCopy size={12} />}
+            {t('ui.copyAsFixedValues')}
+          </button>
+        </div>
       </div>
       <div className="max-h-40 overflow-y-auto rounded-md border border-line bg-surface-2/40">
         <table className="w-full table-fixed border-collapse text-[11.5px]">
@@ -44,6 +67,18 @@ export function RolledVariablesList({
                 </td>
                 <td className="select-text whitespace-pre-wrap break-words px-2 py-1 font-mono text-ink">
                   {v.value || <span className="font-sans text-muted">{t('ui.none')}</span>}
+                </td>
+                <td className="w-7 px-1 py-0.5">
+                  <button
+                    className={cn(
+                      'grid size-5 place-items-center rounded transition-colors',
+                      pinOf(v) ? 'text-accent-ink' : 'text-faint hover:text-ink'
+                    )}
+                    title={pinOf(v) ? t('ui.unpin') : t('ui.pinThisValue')}
+                    onClick={() => (pinOf(v) ? unpin(v.name) : pin(asPin(v)))}
+                  >
+                    <Pin size={11} className={pinOf(v) ? '' : 'opacity-60'} />
+                  </button>
                 </td>
               </tr>
             ))}

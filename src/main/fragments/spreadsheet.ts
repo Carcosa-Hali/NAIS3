@@ -32,10 +32,18 @@ export interface ParsedSheet {
   rows: SheetRow[]
   /** Cells of the sheet's first row. Defaults to the first parsed row's cells. */
   header?: string[]
+  /**
+   * File the sheet came from (file name without extension) when several workbooks are loaded from a folder.
+   * The sheet is then also reachable as `<File:Sheet/Key>`; Excel forbids ":" in sheet names, so this is unambiguous.
+   */
+  file?: string
 }
 
-/** A row reached through `<Sheet/Key>`: its column-B value, its weight and its other columns by header name. */
+/** A row reached through `<Sheet/Key>`: its value, its weight and its other columns by header name. */
 export interface SheetEntry {
+  /** Column A, as typed. */
+  key: string
+  /** Column B, or the joined `+` columns when the sheet has any. */
   value: string
   weight: number
   row: number
@@ -46,12 +54,22 @@ export interface SpreadsheetSource {
   hasSheet: (sheet: string) => boolean
   /** Column-B candidates of every row whose column A equals `key`; null when the sheet has no such key. */
   getOptions: (sheet: string, key: string) => string[] | null
-  /** Every row whose column A equals `key` (including rows with an empty column B); null when there is none. */
+  /**
+   * Every row whose column A equals `key` (including rows with an empty value); null when there is none.
+   * Special keys: `*` = every row of the sheet, `**` = every row with each key weighted equally, both optionally
+   * followed by column filters `[column=a,b]` / `[column!=a]` (see parsePoolKey).
+   */
   getRows: (sheet: string, key: string) => SheetEntry[] | null
-  /** Original-case sheet names (for status / error messages). */
+  /** Original-case sheet names (for status / error messages). Qualified (`File:Sheet`) when ambiguous. */
   sheetNames: () => string[]
   /** Original-case keys of a sheet (for error messages). */
   listKeys: (sheet: string) => string[]
+  /** Header field names of a sheet in column order (empty when unknown). */
+  columns: (sheet: string) => string[]
+  /** Every sheet with this bare name, one per file (used for the modes sheet, which may exist in every file). */
+  sheetsNamed: (sheet: string) => { qualified: string; file?: string }[]
+  /** Why a sheet name cannot be used as written (exists in several files), or undefined. */
+  ambiguity?: (sheet: string) => string | undefined
   /** Set when a workbook is configured but could not be read and no earlier copy is available. */
   readonly unavailableReason?: string
 }
@@ -101,57 +119,183 @@ function parseWeight(text: string | undefined): number {
   return Math.max(0, weight)
 }
 
-export function createSpreadsheetSource(sheets: ParsedSheet[]): SpreadsheetSource {
-  const bySheet = new Map<
-    string,
-    { name: string; keys: Map<string, { label: string; rows: SheetEntry[] }> }
-  >()
+/** A column filter of a pool key: `[column=a,b]` (any of the values) or `[column!=a,b]` (none of them). */
+interface ColumnFilter {
+  field: string
+  values: string[]
+  negate: boolean
+}
 
-  for (const sheet of sheets) {
-    const sheetKey = normalizeName(sheet.name)
-    const entry = bySheet.get(sheetKey) ?? { name: sheet.name, keys: new Map() }
-    bySheet.set(sheetKey, entry)
+interface PoolKey {
+  /** `*`: rows keep their weights. `**`: every key gets the same total chance, then rows by weight. */
+  evenKeys: boolean
+  filters: ColumnFilter[]
+}
 
-    const header = (sheet.header ?? sheet.rows[0]?.cells ?? []).map(fieldName)
-    const weightColumn = header.indexOf('weight')
+const filterValue = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, ' ')
 
-    sheet.rows.forEach((row, index) => {
-      const key = row.key.trim()
-      if (!key || isComment(key) || isComment(row.value)) return
-      const cells = row.cells ?? [row.key, row.value]
-      const weight = weightColumn >= 0 ? parseWeight(cells[weightColumn]) : 1
-      if (weight <= 0) return
-
-      let fields: Map<string, string> | null = null
-      const readFields = (): ReadonlyMap<string, string> => {
-        if (fields === null) {
-          fields = new Map()
-          header.forEach((name, column) => {
-            if (name && !fields!.has(name)) fields!.set(name, cleanCell(cells[column] ?? ''))
-          })
-        }
-        return fields
-      }
-      const normalizedKey = normalizeName(key)
-      const bucket = entry.keys.get(normalizedKey) ?? { label: key, rows: [] }
-      // Columns are read on first use: most rows are only ever picked for their column B.
-      bucket.rows.push({
-        value: cleanCell(row.value),
-        weight,
-        row: row.row ?? index + 1,
-        get fields() {
-          return readFields()
-        }
-      })
-      entry.keys.set(normalizedKey, bucket)
+/**
+ * `*`, `**`, `*[kind=game]`, `**[kind!=show][tier=1,2]` -> PoolKey; anything else -> null (an ordinary key).
+ * An empty value list matches empty cells: `[image_text=]`.
+ */
+export function parsePoolKey(key: string): PoolKey | null {
+  const match = /^(\*\*?)\s*((?:\[[^\]]*\]\s*)*)$/.exec(key.trim())
+  if (!match) return null
+  const filters: ColumnFilter[] = []
+  for (const part of match[2].matchAll(/\[([^\]]*)\]/g)) {
+    const filter = /^\s*([^!=]+?)\s*(!?=)\s*([\s\S]*)$/.exec(part[1])
+    if (!filter) return null
+    filters.push({
+      field: fieldName(filter[1]),
+      negate: filter[2] === '!=',
+      values: filter[3].split(',').map(filterValue)
     })
   }
+  return { evenKeys: match[1] === '**', filters }
+}
 
-  const rowsOf = (sheet: string, key: string): SheetEntry[] | null =>
-    bySheet.get(normalizeName(sheet))?.keys.get(normalizeName(key))?.rows ?? null
+interface SheetBucket {
+  name: string
+  file?: string
+  header: string[]
+  keys: Map<string, { label: string; rows: SheetEntry[] }>
+  /** Every row in sheet order (for `*` pools). */
+  all: SheetEntry[]
+}
+
+function buildSheet(sheet: ParsedSheet): SheetBucket {
+  const rawHeader = sheet.header ?? sheet.rows[0]?.cells ?? []
+  const header = rawHeader.map(fieldName)
+  const weightColumn = header.indexOf('weight')
+  // Columns headed "+name" are joined (in column order, blanks skipped) into the row's value.
+  const joined = rawHeader
+    .map((text, column) => (text.trim().startsWith('+') ? column : -1))
+    .filter((column) => column >= 0)
+  const bucket: SheetBucket = {
+    name: sheet.name,
+    file: sheet.file,
+    header,
+    keys: new Map(),
+    all: []
+  }
+
+  sheet.rows.forEach((row, index) => {
+    const key = row.key.trim()
+    const rowNumber = row.row ?? index + 1
+    if (!key || isComment(key)) return
+    const cells = row.cells ?? [row.key, row.value]
+    const value =
+      joined.length > 0
+        ? joined
+            .map((column) => cleanCell(cells[column] ?? ''))
+            .filter(Boolean)
+            .join(', ')
+        : cleanCell(row.value)
+    if (joined.length === 0 && isComment(row.value)) return
+    const weight = weightColumn >= 0 ? parseWeight(cells[weightColumn]) : 1
+    if (weight <= 0) return
+
+    let fields: Map<string, string> | null = null
+    const readFields = (): ReadonlyMap<string, string> => {
+      if (fields === null) {
+        fields = new Map()
+        header.forEach((name, column) => {
+          if (name && !fields!.has(name)) fields!.set(name, cleanCell(cells[column] ?? ''))
+        })
+      }
+      return fields
+    }
+    const normalizedKey = normalizeName(key)
+    const keyBucket = bucket.keys.get(normalizedKey) ?? { label: key, rows: [] }
+    // Columns are read on first use: most rows are only ever picked for their value.
+    const entry: SheetEntry = {
+      key,
+      value,
+      weight,
+      row: rowNumber,
+      get fields() {
+        return readFields()
+      }
+    }
+    keyBucket.rows.push(entry)
+    bucket.keys.set(normalizedKey, keyBucket)
+    // Row 1 is the header row: `*` pools never pick it (the xlsx reader numbers every row).
+    if (row.row !== 1) bucket.all.push(entry)
+  })
+  return bucket
+}
+
+function poolRows(bucket: SheetBucket, pool: PoolKey): SheetEntry[] {
+  let rows = bucket.all
+  for (const filter of pool.filters) {
+    rows = rows.filter((row) => {
+      const cell = filterValue(row.fields.get(filter.field) ?? '')
+      return filter.values.includes(cell) !== filter.negate
+    })
+  }
+  if (!pool.evenKeys) return rows
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    const key = normalizeName(row.key)
+    totals.set(key, (totals.get(key) ?? 0) + row.weight)
+  }
+  return rows.map((row) => {
+    const total = totals.get(normalizeName(row.key)) ?? 1
+    return Object.defineProperty({ ...row, weight: row.weight / total }, 'fields', {
+      get: () => row.fields,
+      enumerable: true
+    }) as SheetEntry
+  })
+}
+
+export function createSpreadsheetSource(sheets: ParsedSheet[]): SpreadsheetSource {
+  /** Qualified name (`file:sheet`, or just `sheet` without a file) -> bucket. */
+  const qualified = new Map<string, SheetBucket>()
+  /** Bare sheet name -> every bucket with that name (one per file). */
+  const bare = new Map<string, SheetBucket[]>()
+
+  for (const sheet of sheets) {
+    const built = buildSheet(sheet)
+    const sheetKey = normalizeName(sheet.name)
+    const qualifiedKey = sheet.file ? `${normalizeName(sheet.file)}:${sheetKey}` : sheetKey
+    const existing = qualified.get(qualifiedKey)
+    if (existing) {
+      // Same sheet twice in one source (only happens with hand-made sources): merge the rows.
+      for (const [key, bucket] of built.keys) {
+        const target = existing.keys.get(key)
+        if (target) target.rows.push(...bucket.rows)
+        else existing.keys.set(key, bucket)
+      }
+      existing.all.push(...built.all)
+      continue
+    }
+    qualified.set(qualifiedKey, built)
+    bare.set(sheetKey, [...(bare.get(sheetKey) ?? []), built])
+  }
+
+  const label = (bucket: SheetBucket): string =>
+    bucket.file ? `${bucket.file}:${bucket.name}` : bucket.name
+
+  const find = (sheet: string): SheetBucket | undefined => {
+    const name = normalizeName(sheet)
+    if (name.includes(':')) return qualified.get(name.replace(/\s*:\s*/, ':'))
+    const matches = bare.get(name)
+    return matches && matches.length === 1 ? matches[0] : undefined
+  }
+
+  const rowsOf = (sheet: string, key: string): SheetEntry[] | null => {
+    const bucket = find(sheet)
+    if (!bucket) return null
+    const pool = parsePoolKey(key)
+    if (pool) {
+      const rows = poolRows(bucket, pool)
+      return rows.length > 0 ? rows : null
+    }
+    return bucket.keys.get(normalizeName(key))?.rows ?? null
+  }
 
   return {
-    hasSheet: (sheet) => bySheet.has(normalizeName(sheet)),
+    hasSheet: (sheet) => find(sheet) !== undefined,
     getOptions: (sheet, key) => {
       const values = rowsOf(sheet, key)
         ?.map((row) => row.value)
@@ -159,9 +303,24 @@ export function createSpreadsheetSource(sheets: ParsedSheet[]): SpreadsheetSourc
       return values && values.length > 0 ? values : null
     },
     getRows: (sheet, key) => rowsOf(sheet, key),
-    sheetNames: () => [...bySheet.values()].map((entry) => entry.name),
-    listKeys: (sheet) =>
-      [...(bySheet.get(normalizeName(sheet))?.keys.values() ?? [])].map((bucket) => bucket.label)
+    sheetNames: () =>
+      [...qualified.values()].map((bucket) =>
+        (bare.get(normalizeName(bucket.name))?.length ?? 0) > 1 ? label(bucket) : bucket.name
+      ),
+    listKeys: (sheet) => [...(find(sheet)?.keys.values() ?? [])].map((bucket) => bucket.label),
+    columns: (sheet) => find(sheet)?.header ?? [],
+    sheetsNamed: (sheet) =>
+      (bare.get(normalizeName(sheet)) ?? []).map((bucket) => ({
+        qualified: label(bucket),
+        ...(bucket.file ? { file: bucket.file } : {})
+      })),
+    ambiguity: (sheet) => {
+      const name = normalizeName(sheet)
+      if (name.includes(':')) return undefined
+      const matches = bare.get(name)
+      if (!matches || matches.length < 2) return undefined
+      return `Sheet "${sheet}" exists in several workbooks (${matches.map((m) => `${m.file}.xlsx`).join(', ')}). Write it with its file name, like <${label(matches[0])}/...>.`
+    }
   }
 }
 
@@ -173,6 +332,8 @@ export function unavailableSpreadsheet(reason: string): SpreadsheetSource {
     getRows: () => null,
     sheetNames: () => [],
     listKeys: () => [],
+    columns: () => [],
+    sheetsNamed: () => [],
     unavailableReason: reason
   }
 }
@@ -231,6 +392,8 @@ export function composeFragmentSources(
     const sheet = path.slice(0, slash)
     const key = path.slice(slash + 1)
     if (!sheets.hasSheet(sheet)) {
+      const ambiguous = sheets.ambiguity?.(sheet)
+      if (ambiguous) throw new Error(ambiguous)
       if (strict) {
         throw new Error(
           `<${path}> matches no saved fragment and the workbook has no sheet "${sheet}". Sheets: ${sheets.sheetNames().join(', ') || '(none)'}.`
@@ -253,6 +416,8 @@ export function composeFragmentSources(
         line: row.value,
         weight: row.weight,
         row: row.row,
+        key: row.key,
+        sheet,
         get fields() {
           return row.fields
         }

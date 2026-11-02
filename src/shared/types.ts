@@ -60,6 +60,8 @@ export interface GenerationRequest {
   promptParts?: PromptParts
   /** Prompt variables rolled for this image (set by fragment preprocessing; stored in the image metadata). */
   rolledVariables?: RolledVariable[]
+  /** Variables pinned in the pin panel; they win over every definition of the same name. Not sent to NovelAI. */
+  pinnedVariables?: { name: string; lock: string }[]
   negativePrompt: string
   model: string
   width: number
@@ -407,6 +409,32 @@ export interface RolledVariable {
   value: string
   /** Expression that reproduces this exact value when written as `$name := <lock>`. */
   lock: string
+  /** The value came from a pin (pin panel), not from a roll. */
+  pinned?: boolean
+  /** Values the variable could have taken (roll preview only; for the pin panel's value list). */
+  options?: { label: string; lock: string }[]
+}
+
+/** A row of a `modes` sheet: the prompt texts a mode puts into the prompt panel. */
+export interface PromptMode {
+  /** `File:name` in a folder of workbooks, else the name. */
+  id: string
+  name: string
+  file?: string
+  row: number
+  prompt: string
+  negativePrompt: string
+  characters: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
+  size?: { width: number; height: number }
+  note?: string
+}
+
+/** A variable pinned in the pin panel: sent with every generation as `$name := lock`. */
+export interface PinnedVariable {
+  name: string
+  lock: string
+  /** What the pin shows (the value it stands for). */
+  label: string
 }
 
 /** A fragment line or sheet row that was picked during a roll. */
@@ -433,8 +461,12 @@ export type RollPreviewResult =
 /** IPC invoke 채널 계약: 채널명 → (요청, 응답) */
 /** 외부 조각 워크북(.xlsx) 상태 — 설정 화면 표시용 */
 export interface FragmentWorkbookInfo {
-  /** 선택된 파일 경로, 없으면 null */
+  /** 선택된 파일 경로, 없으면 null (a workbook file or a folder of workbooks) */
   path: string | null
+  /** true when the path is a folder: every .xlsx / .xlsm in it (and its subfolders) is loaded */
+  folder?: boolean
+  /** Workbooks read successfully */
+  fileCount?: number
   /** 읽어 들인 시트 수 */
   sheetCount: number
   /** 마지막 읽기 오류 (정상이면 null). 오류여도 직전 성공본은 계속 사용된다 */
@@ -548,6 +580,10 @@ export interface IpcInvokeMap {
   'fragmentWorkbook:get': { req: void; res: FragmentWorkbookInfo }
   'fragmentWorkbook:pick': { req: void; res: FragmentWorkbookInfo }
   'fragmentWorkbook:clear': { req: void; res: FragmentWorkbookInfo }
+  /** Choose a folder: every workbook in it is loaded (sheets also reachable as <File:Sheet/Key>) */
+  'fragmentWorkbook:pickFolder': { req: void; res: FragmentWorkbookInfo }
+  /** Rows of every `modes` sheet in the workbook(s) */
+  'modes:list': { req: void; res: PromptMode[] }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
   'frags:folderCreate': { req: { name: string }; res: { id: number } }
   'frags:folderRename': { req: { id: number; name: string }; res: void }
@@ -566,6 +602,7 @@ export interface IpcInvokeMap {
       prompt: string
       negativePrompt: string
       characters: { prompt: string; negativePrompt: string }[]
+      pins?: { name: string; lock: string }[]
     }
     res: RollPreviewResult
   }

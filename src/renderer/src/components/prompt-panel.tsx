@@ -39,6 +39,8 @@ import { ParamsDialog } from './params-dialog'
 import { RefOverlay } from './ref-overlay'
 import { ResolutionPicker } from './resolution-picker'
 import { RollPreviewDialog } from './roll-preview-dialog'
+import { ModeBar } from './mode-bar'
+import { PinButton, PinChips } from './pin-panel'
 import { SOURCE_BANNER_HEIGHT, SourceBanner } from './source-banner'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -274,6 +276,9 @@ export function PromptPanel(): React.JSX.Element {
         </AnimatePresence>
         {/* 프롬프트 프리셋 — 포지티브 프롬프트 위 */}
         <PromptPresetBar />
+        {/* Modes from the workbook's modes sheets, and the active pins */}
+        <ModeBar />
+        <PinChips />
         <div
           className={'flex min-h-0 flex-col gap-1 ' + (posCollapsed ? 'flex-none' : 'min-h-9')}
           style={
@@ -298,6 +303,7 @@ export function PromptPanel(): React.JSX.Element {
                 >
                   <Dices size={13} />
                 </button>
+                <PinButton />
                 <SyntaxHelp />
               </div>
             }

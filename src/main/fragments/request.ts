@@ -67,14 +67,22 @@ function createPipeline(
   rng: () => number,
   strict: boolean,
   peek: boolean,
-  onPick?: (path: string, entry: FragmentEntry) => void
+  onPick?: (path: string, entry: FragmentEntry) => void,
+  pins: { name: string; lock: string }[] = [],
+  collectOptions = false
 ): {
   collect: (text: string) => string
   roll: () => RolledVariable[]
   finish: (text: string) => string
 } {
   const store = new BlockStore()
-  const definitions: VariableDefinition[] = []
+  const definitions: VariableDefinition[] = pins
+    .filter((pin) => pin.name.trim())
+    .map((pin) => ({
+      name: pin.name.trim().replace(/^\$/, ''),
+      expression: pin.lock,
+      pinned: true
+    }))
   let values: ReadonlyMap<string, string> | null = null
 
   const hold = (text: string): string =>
@@ -112,6 +120,7 @@ function createPipeline(
         rng,
         strict,
         peek,
+        collectOptions,
         prepare: (expression, known) =>
           resolveVariableBlocks(store.restore(expression), known, strict),
         record: (variable) => rolled.push(variable)
@@ -139,11 +148,12 @@ export function preprocessRequest(
 ): GenerationRequest {
   const rng = options.rng ?? Math.random
   const fragments = composeFragmentSources(source, options.sheets, { strict: true })
-  const pipeline = createPipeline(fragments, rng, true, false)
+  const pipeline = createPipeline(fragments, rng, true, false, undefined, request.pinnedVariables)
 
   const collected = mapRequestTexts(request, pipeline.collect)
   const variables = pipeline.roll()
   const finished = mapRequestTexts(collected, pipeline.finish)
+  delete finished.pinnedVariables
   return variables.length > 0 ? { ...finished, rolledVariables: variables } : finished
 }
 
@@ -151,6 +161,8 @@ export interface RollPreviewInput {
   prompt: string
   negativePrompt: string
   characters: { prompt: string; negativePrompt: string }[]
+  /** Variables pinned in the pin panel. */
+  pins?: { name: string; lock: string }[]
 }
 
 /**
@@ -175,7 +187,7 @@ export function rollPreview(
   let variables: RolledVariable[] = []
   try {
     const fragments = composeFragmentSources(source, sheets, { strict: true })
-    const pipeline = createPipeline(fragments, rng, true, true, record)
+    const pipeline = createPipeline(fragments, rng, true, true, record, input.pins, true)
     const texts = [
       input.prompt,
       input.negativePrompt,

@@ -35,6 +35,17 @@ interface CharactersState {
   setFolderColor: (id: number, color: string | null) => void
   removeFolder: (id: number) => void
   move: (activeKey: string, overKey: string) => void
+  /**
+   * Mode slots: exactly these characters become the enabled ones. They are kept as cards in one folder
+   * (`folderName`), reused from mode to mode (slot 1 = first card of the folder, ...), so applying modes
+   * does not pile up cards. Every other enabled card is disabled.
+   */
+  applyModeCharacters: (
+    chars: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[],
+    folderName: string,
+    slotName: (index: number) => string,
+    maxCharacters?: number
+  ) => Promise<void>
   /** 메타데이터의 캐릭터를 라이브러리로 가져오기 (기존 enabled는 모두 해제 후 새로 추가) */
   importFromMetadata: (
     chars: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[],
@@ -171,6 +182,65 @@ export const useCharactersStore = create<CharactersState>((set, get) => ({
     const nextFolders = folders.filter((f) => f.id !== id)
     set({ folders: nextFolders, items: canonicalize(nextFolders, nextItems) })
     void window.nais.invoke('chars:folderDelete', { id })
+  },
+
+  applyModeCharacters: async (chars, folderName, slotName, maxCharacters = 6) => {
+    if (!get().loaded) await get().load()
+    let folder = get().folders.find((f) => f.name === folderName)
+    if (!folder) {
+      await get().createFolder(folderName)
+      folder = get().folders.find((f) => f.name === folderName)
+    }
+    const folderId = folder?.id ?? null
+    const slots = (): CharacterCard[] =>
+      get().items.filter((c) => folderId !== null && c.folderId === folderId)
+
+    // 1) everything outside the slots off (the mode decides exactly which characters are sent)
+    for (const c of get().items) {
+      if (c.enabled && (folderId === null || c.folderId !== folderId)) {
+        get().updateCard(c.id, { enabled: false })
+      }
+    }
+    const wanted = chars.slice(0, maxCharacters)
+    // 2) enough slot cards
+    while (slots().length < wanted.length) {
+      const index = slots().length
+      const { id } = await window.nais.invoke('chars:create', { name: slotName(index), folderId })
+      const card: CharacterCard = {
+        id,
+        name: slotName(index),
+        prompt: '',
+        negativePrompt: '',
+        thumbnail: '',
+        enabled: false,
+        center: { x: 0.5, y: 0.5 },
+        folderId
+      }
+      set({ items: canonicalize(get().folders, [...get().items, card]) })
+      void window.nais.invoke('chars:reorder', {
+        order: toOrderEntries(get().folders, get().items)
+      })
+    }
+    // 3) fill the slots in order; unused slots off
+    const cards = slots()
+    cards.forEach((card, index) => {
+      const ch = wanted[index]
+      if (!ch) {
+        if (card.enabled) get().updateCard(card.id, { enabled: false })
+        return
+      }
+      get().updateCard(
+        card.id,
+        {
+          name: slotName(index),
+          prompt: ch.prompt,
+          negativePrompt: ch.negativePrompt,
+          ...(ch.center ? { center: ch.center } : {})
+        },
+        maxCharacters
+      )
+      get().updateCard(card.id, { enabled: true }, maxCharacters)
+    })
   },
 
   importFromMetadata: async (chars, maxCharacters = 6) => {

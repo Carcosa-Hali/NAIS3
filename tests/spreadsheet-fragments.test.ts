@@ -297,7 +297,13 @@ describe('WorkbookCache', () => {
     const cache = new WorkbookCache()
 
     expect((await cache.refresh(file))?.getOptions('Locations', 'Parks')).toEqual(['park'])
-    expect(cache.status()).toEqual({ path: file, sheetCount: 1, error: null })
+    expect(cache.status()).toEqual({
+      path: file,
+      folder: false,
+      fileCount: 1,
+      sheetCount: 1,
+      error: null
+    })
 
     await writeFile(
       file,

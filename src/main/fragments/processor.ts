@@ -28,6 +28,9 @@ export interface FragmentEntry {
   row?: number
   /** Spreadsheet columns by header field name (see spreadsheet.ts). */
   fields?: ReadonlyMap<string, string>
+  /** Spreadsheet rows: the row's own column-A key and the sheet as written in the reference. */
+  key?: string
+  sheet?: string
 }
 
 export interface FragmentSource {

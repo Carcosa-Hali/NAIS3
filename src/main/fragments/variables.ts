@@ -62,7 +62,12 @@ export interface VariableDefinition {
   expression: string
   /** `$Name := ...`: overrides every ordinary definition of the same name. */
   fixed?: boolean
+  /** Pinned in the app's pin panel: overrides `:=` and `=` definitions of the same name. */
+  pinned?: boolean
 }
+
+/** Most choices kept per variable for the pin panel's value list. */
+export const MAX_VARIABLE_OPTIONS = 3000
 
 export type { RolledVariable }
 
@@ -139,7 +144,11 @@ export interface RollOptions {
   prepare?: (expression: string, values: ReadonlyMap<string, string>) => string
   /** Receives every rolled variable, in rolling order. */
   record?: (variable: RolledVariable) => void
+  /** true: every rolled variable also lists the values it could have taken (for the pin panel). */
+  collectOptions?: boolean
 }
+
+type VariableOption = NonNullable<RolledVariable['options']>[number]
 
 function fail(strict: boolean, message: string): void {
   if (strict) throw new PromptVariableError(message)
@@ -155,8 +164,40 @@ interface PoolItem {
   from?: { path: string; entry: FragmentEntry }
 }
 
+/**
+ * A reference that picks exactly this entry. Sheet rows use their own key (`<Sheet/key#12>`), so a row reached
+ * through a pool (`<Sheet/*>`, `<Sheet/**[col=x]>`) is still pinned by a plain, readable reference.
+ */
 function referenceLock(path: string, entry: FragmentEntry): string {
-  return entry.row !== undefined ? `<${path}#${entry.row}>` : `<${path}>`
+  if (entry.row === undefined) return `<${path}>`
+  if (entry.key !== undefined && entry.sheet !== undefined) {
+    return `<${entry.sheet}/${entry.key}#${entry.row}>`
+  }
+  return `<${path}#${entry.row}>`
+}
+
+function shorten(text: string, limit = 120): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat
+}
+
+/** Unique (by lock) value choices, capped. */
+function optionList(items: VariableOption[]): VariableOption[] {
+  const seen = new Set<string>()
+  const out: VariableOption[] = []
+  for (const item of items) {
+    if (seen.has(item.lock)) continue
+    seen.add(item.lock)
+    out.push(item)
+    if (out.length >= MAX_VARIABLE_OPTIONS) break
+  }
+  return out
+}
+
+function rowOptionLabel(entry: FragmentEntry): string {
+  const text = shorten(entry.line, 80)
+  const head = entry.key !== undefined ? `${entry.key} · #${entry.row}` : `#${entry.row}`
+  return text ? `${head} — ${text}` : head
 }
 
 function expandPool(args: string, options: RollOptions, name: string): PoolItem[] {
@@ -193,6 +234,8 @@ function expandPool(args: string, options: RollOptions, name: string): PoolItem[
 interface PickedRow {
   path: string
   entry: FragmentEntry
+  /** Every row the pick was made from (the last level when an index sheet was followed). */
+  entries: FragmentEntry[]
 }
 
 /** row(<Sheet/Key>): one row, following a picked cell that is only another reference (`<Other/Key>`). */
@@ -224,7 +267,7 @@ function pickRow(argument: string, options: RollOptions, name: string): PickedRo
     // A cell holding nothing but another sheet reference (an index sheet pointing at the real rows): follow it.
     const inner = REFERENCE.exec(entry.line.trim())
     if (!inner || inner[2].includes('|') || !inner[2].includes('/')) {
-      return { path: found.path, entry }
+      return { path: found.path, entry, entries }
     }
     reference = inner
   }
@@ -232,14 +275,62 @@ function pickRow(argument: string, options: RollOptions, name: string): PickedRo
   return null
 }
 
-function evaluate(
-  name: string,
-  expression: string,
-  options: RollOptions
-): { value: string; lock: string; fields?: ReadonlyMap<string, string> } {
-  const random = /^random\s*\(([\s\S]*)\)$/i.exec(expression)
-  if (random) {
-    const pool = expandPool(random[1], options, name)
+interface Evaluated {
+  value: string
+  lock: string
+  fields?: ReadonlyMap<string, string>
+  options?: VariableOption[]
+}
+
+/** A list's items: literal options and every non-empty line of each `<reference>`. Weights are ignored. */
+function listItems(args: string, options: RollOptions, name: string): string[] {
+  return expandPool(args, options, name).map((item) => item.text)
+}
+
+/** Fields of shuffle() / list(): `.1`, `.2`, ... and `.count`. */
+function listFields(items: string[]): Map<string, string> {
+  const fields = new Map<string, string>()
+  items.forEach((item, index) => fields.set(String(index + 1), item))
+  fields.set('count', String(items.length))
+  return fields
+}
+
+/** A number argument: a literal (`15`, `15%`) or a `<reference>` whose picked line is a number. */
+function numberArgument(text: string, options: RollOptions, name: string): number | null {
+  let raw = text.trim()
+  const reference = REFERENCE.exec(raw)
+  if (reference && !reference[1]) {
+    const found = lookupAlternatives(options.source, reference[2].split('??'), (entries) =>
+      entries.some((entry) => entry.line.trim())
+    )
+    const entries = found?.entries?.filter((entry) => entry.line.trim()) ?? []
+    if (entries.length === 0) {
+      fail(options.strict, `Variable "${name}": <${reference[2].trim()}> has no value.`)
+      return null
+    }
+    raw =
+      entries[
+        pickWeighted(
+          entries.map((e) => e.weight),
+          options.rng
+        )
+      ].line.trim()
+  }
+  const value = Number(raw.replace(/%$/, '').trim())
+  if (!Number.isFinite(value)) {
+    fail(options.strict, `Variable "${name}": "${raw}" is not a number.`)
+    return null
+  }
+  return value
+}
+
+function evaluate(name: string, expression: string, options: RollOptions): Evaluated {
+  const call = /^([a-z]+)\s*\(([\s\S]*)\)$/i.exec(expression)
+  const fn = call?.[1].toLowerCase()
+  const args = call?.[2] ?? ''
+
+  if (fn === 'random') {
+    const pool = expandPool(args, options, name)
     if (pool.length === 0) {
       fail(options.strict, `Variable "${name}": random() has no options.`)
       return { value: '', lock: '' }
@@ -252,22 +343,153 @@ function evaluate(
         )
       ]
     if (item.from) options.source.onPick?.(item.from.path, item.from.entry)
-    return { value: item.text, lock: item.lock }
+    return {
+      value: item.text,
+      lock: item.lock,
+      ...(options.collectOptions
+        ? { options: optionList(pool.map((p) => ({ label: shorten(p.text), lock: p.lock }))) }
+        : {})
+    }
   }
 
-  const row = /^row\s*\(([\s\S]*)\)$/i.exec(expression)
-  if (row) {
-    const picked = pickRow(row[1], options, name)
+  if (fn === 'row') {
+    const picked = pickRow(args, options, name)
     if (!picked) return { value: '', lock: '', fields: new Map() }
     return {
       value: picked.entry.line,
       lock: `row(${referenceLock(picked.path, picked.entry)})`,
-      fields: picked.entry.fields ?? new Map()
+      fields: picked.entry.fields ?? new Map(),
+      ...(options.collectOptions
+        ? {
+            options: optionList(
+              picked.entries.map((entry) => ({
+                label: rowOptionLabel(entry),
+                lock: `row(${referenceLock(picked.path, entry)})`
+              }))
+            )
+          }
+        : {})
+    }
+  }
+
+  if (fn === 'shuffle' || fn === 'list') {
+    const items = listItems(args, options, name)
+    if (items.length === 0) fail(options.strict, `Variable "${name}": ${fn}() has no items.`)
+    if (fn === 'shuffle') {
+      for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(options.rng() * (i + 1))
+        ;[items[i], items[j]] = [items[j], items[i]]
+      }
+    }
+    return { value: items.join(', '), lock: `list(${items.join(', ')})`, fields: listFields(items) }
+  }
+
+  if (fn === 'chance') {
+    const parts = splitTopLevel(args, ',').map((part) => part.trim())
+    const percent = numberArgument(parts[0] ?? '', options, name)
+    const yes = parts[1] || 'yes'
+    const no = parts.length > 2 ? parts[2] : 'no'
+    if (percent === null) return { value: no, lock: no }
+    const value = options.rng() * 100 < percent ? yes : no
+    return {
+      value,
+      lock: value,
+      ...(options.collectOptions
+        ? { options: [yes, no].map((label) => ({ label, lock: label })) }
+        : {})
+    }
+  }
+
+  if (fn === 'calc') {
+    try {
+      const value = formatNumber(calculate(args))
+      return { value, lock: value }
+    } catch (error) {
+      fail(
+        options.strict,
+        `Variable "${name}": calc(${args.trim().slice(0, 60)}): ${error instanceof Error ? error.message : String(error)}`
+      )
+      return { value: '', lock: '' }
     }
   }
 
   if (!expression) fail(options.strict, `Variable "${name}" has no value.`)
   return { value: expression, lock: expression }
+}
+
+function formatNumber(value: number): string {
+  if (Number.isInteger(value)) return String(value)
+  return String(Math.round(value * 10000) / 10000)
+}
+
+/**
+ * Arithmetic for calc(): numbers, + - * / %, parentheses and min / max / round / floor / ceil / abs.
+ * A small recursive-descent parser, so no code is ever evaluated.
+ */
+export function calculate(text: string): number {
+  const tokens = text.match(/\d+(?:\.\d+)?|\.\d+|[a-z]+|[-+*/%(),]|\S/gi) ?? []
+  let position = 0
+  const peek = (): string | undefined => tokens[position]
+  const take = (expected?: string): string => {
+    const token = tokens[position++]
+    if (token === undefined) throw new Error('the expression ends too early')
+    if (expected !== undefined && token !== expected) throw new Error(`expected "${expected}"`)
+    return token
+  }
+  const functions: Record<string, (values: number[]) => number> = {
+    min: (v) => Math.min(...v),
+    max: (v) => Math.max(...v),
+    round: (v) => Math.round(v[0]),
+    floor: (v) => Math.floor(v[0]),
+    ceil: (v) => Math.ceil(v[0]),
+    abs: (v) => Math.abs(v[0])
+  }
+  const primary = (): number => {
+    const token = take()
+    if (token === '-') return -primary()
+    if (token === '+') return primary()
+    if (token === '(') {
+      const value = sum()
+      take(')')
+      return value
+    }
+    const fn = functions[token.toLowerCase()]
+    if (fn) {
+      take('(')
+      const values = [sum()]
+      while (peek() === ',') {
+        take(',')
+        values.push(sum())
+      }
+      take(')')
+      return fn(values)
+    }
+    const value = Number(token)
+    if (!Number.isFinite(value)) throw new Error(`"${token}" is not a number`)
+    return value
+  }
+  const product = (): number => {
+    let value = primary()
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = take()
+      const right = primary()
+      if (op === '*') value *= right
+      else if (right === 0) throw new Error('division by zero')
+      else value = op === '/' ? value / right : value % right
+    }
+    return value
+  }
+  const sum = (): number => {
+    let value = product()
+    while (peek() === '+' || peek() === '-') {
+      value = take() === '+' ? value + product() : value - product()
+    }
+    return value
+  }
+  if (tokens.length === 0) throw new Error('nothing to calculate')
+  const result = sum()
+  if (position < tokens.length) throw new Error(`unexpected "${tokens[position]}"`)
+  return result
 }
 
 /**
@@ -283,9 +505,27 @@ export function rollVariables(
   const seen = new Set<string>()
   const ordered: VariableDefinition[] = []
 
+  // Pins (from the pin panel) come first and silently win over every definition of the same name.
   for (const definition of definitions) {
-    if (!definition.fixed) continue
+    if (!definition.pinned) continue
     const id = definition.name.toLowerCase()
+    if (fixed.has(id)) continue
+    fixed.add(id)
+    ordered.push(definition)
+  }
+  const pinned = new Set(fixed)
+  /** The definition a pin overrides (its value list is what the pin panel offers). */
+  const shadowed = new Map<string, VariableDefinition>()
+  for (const definition of definitions) {
+    if (definition.pinned) continue
+    const id = definition.name.toLowerCase()
+    if (!pinned.has(id)) continue
+    if (definition.fixed || !shadowed.has(id)) shadowed.set(id, definition)
+  }
+  for (const definition of definitions) {
+    if (!definition.fixed || definition.pinned) continue
+    const id = definition.name.toLowerCase()
+    if (pinned.has(id)) continue
     if (fixed.has(id)) {
       fail(options.strict, `Variable "${definition.name}" is fixed (:=) more than once.`)
       continue
@@ -294,7 +534,7 @@ export function rollVariables(
     ordered.push(definition)
   }
   for (const definition of definitions) {
-    if (definition.fixed) continue
+    if (definition.fixed || definition.pinned) continue
     const id = definition.name.toLowerCase()
     if (seen.has(id) && !fixed.has(id)) {
       fail(options.strict, `Variable "${definition.name}" is defined more than once.`)
@@ -304,7 +544,7 @@ export function rollVariables(
     if (!fixed.has(id)) ordered.push(definition)
   }
 
-  for (const { name, expression } of ordered) {
+  for (const { name, expression, pinned: isPinned } of ordered) {
     const id = name.toLowerCase()
     let prepared = expression
     if (options.prepare) {
@@ -320,12 +560,36 @@ export function rollVariables(
       }
     }
     const result = evaluate(name, prepared.trim(), options)
+    const original = isPinned && options.collectOptions ? shadowed.get(id) : undefined
+    if (original) {
+      // Preview only: list what the overridden definition could take, without recording picks or failing.
+      try {
+        const quiet: RollOptions = {
+          ...options,
+          strict: false,
+          source: { ...options.source, onPick: undefined }
+        }
+        const expression = options.prepare
+          ? options.prepare(original.expression, values)
+          : original.expression
+        const choices = evaluate(name, expression.trim(), quiet).options
+        if (choices && choices.length > 0) result.options = choices
+      } catch {
+        // the pin's own value stays the only choice
+      }
+    }
     values.set(id, result.value)
     if (result.fields) {
       for (const [field, text] of result.fields) values.set(`${id}.${field}`, text)
       values.set(columnsKey(id), [...result.fields.keys()].join(', '))
     }
-    options.record?.({ name, value: result.value, lock: result.lock })
+    options.record?.({
+      name,
+      value: result.value,
+      lock: result.lock,
+      ...(isPinned ? { pinned: true } : {}),
+      ...(result.options && result.options.length > 0 ? { options: result.options } : {})
+    })
   }
   return values
 }

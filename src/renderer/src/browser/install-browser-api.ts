@@ -875,6 +875,7 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
 
   // 외부 워크북(.xlsx)은 파일 시스템이 필요해 Electron 전용
   if (channel.startsWith('fragmentWorkbook:')) return { path: null, sheetCount: 0, error: null }
+  if (channel === 'modes:list') return []
   if (channel === 'settings:getSaveDir') return { dir: 'Browser downloads', isDefault: true }
   if (channel === 'settings:pickSaveDir') return { dir: null }
   if (channel === 'settings:resetSaveDir') return { dir: 'Browser downloads' }

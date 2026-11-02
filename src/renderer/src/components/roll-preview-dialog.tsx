@@ -5,6 +5,7 @@ import { cn } from '../lib/utils'
 import { useT } from '../lib/i18n'
 import { enabledCharacters } from '../stores/characters-store'
 import { useGenerationStore } from '../stores/generation-store'
+import { pinsForRequest } from '../stores/pins-store'
 import { RolledVariablesList } from './rolled-variables'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
@@ -32,7 +33,8 @@ export function RollPreviewDialog({
           characters: enabledCharacters().map((c) => ({
             prompt: c.prompt,
             negativePrompt: c.negativePrompt
-          }))
+          })),
+          pins: pinsForRequest()
         })
       )
     } catch (error) {

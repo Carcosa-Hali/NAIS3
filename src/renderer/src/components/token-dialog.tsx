@@ -493,7 +493,17 @@ function WorkbookRow(): React.JSX.Element {
             setInfo(await window.nais.invoke('fragmentWorkbook:pick', undefined))
           }
         >
-          <FolderOpen size={14} /> {t('ui.change')}
+          <FolderOpen size={14} /> {t('ui.chooseFile')}
+        </Button>
+        <Button
+          variant="default"
+          className="gap-1"
+          title={t('ui.fragmentWorkbookFolderHint')}
+          onClick={async () =>
+            setInfo(await window.nais.invoke('fragmentWorkbook:pickFolder', undefined))
+          }
+        >
+          <FolderOpen size={14} /> {t('ui.chooseFolder')}
         </Button>
         {info?.path && (
           <Button
@@ -509,10 +519,14 @@ function WorkbookRow(): React.JSX.Element {
       </div>
       {info?.path &&
         (info.error ? (
-          <p className="text-[11.5px] text-danger">{t('ui.fragmentWorkbookError', info.error)}</p>
+          <p className="whitespace-pre-wrap text-[11.5px] text-danger">
+            {t('ui.fragmentWorkbookError', info.error)}
+          </p>
         ) : (
           <p className="text-[11.5px] text-faint">
-            {t('ui.fragmentWorkbookSheets', info.sheetCount)}
+            {info.folder
+              ? t('ui.fragmentWorkbookFolderSheets', info.fileCount ?? 0, info.sheetCount)
+              : t('ui.fragmentWorkbookSheets', info.sheetCount)}
           </p>
         ))}
     </div>

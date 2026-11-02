@@ -6,7 +6,7 @@
  * booleans are skipped, and phonetic (furigana) runs are ignored so Japanese cells read as typed.
  */
 
-import { posix } from 'path'
+import { basename, join, posix } from 'path'
 import { promises as fs } from 'fs'
 import JSZip from 'jszip'
 import type { FragmentWorkbookInfo } from '../../shared/types'
@@ -167,14 +167,46 @@ export async function parseXlsx(data: Uint8Array): Promise<ParsedSheet[]> {
   return sheets
 }
 
+/** Workbook files picked up from a folder: .xlsx / .xlsm, not Excel's "~$" lock files, at most 3 levels deep. */
+async function listWorkbookFiles(folder: string, depth = 0): Promise<string[]> {
+  const found: string[] = []
+  let entries: import('fs').Dirent[]
+  try {
+    entries = await fs.readdir(folder, { withFileTypes: true })
+  } catch {
+    return found
+  }
+  for (const entry of entries) {
+    const full = join(folder, entry.name)
+    if (entry.isDirectory()) {
+      if (depth < 3 && !entry.name.startsWith('.'))
+        found.push(...(await listWorkbookFiles(full, depth + 1)))
+    } else if (/\.(xlsx|xlsm)$/i.test(entry.name) && !entry.name.startsWith('~$')) {
+      found.push(full)
+    }
+  }
+  return found.sort((a, b) => a.localeCompare(b))
+}
+
+interface FileState {
+  stamp: string
+  sheets: ParsedSheet[] | null
+  error: string | null
+}
+
 /**
- * Re-reads the workbook only when its modification time or size changed, so edits made in Excel show up
+ * Re-reads workbooks only when their modification time or size changed, so edits made in Excel show up
  * on the next generation without re-parsing on every image. If a re-read fails (file locked mid-save,
  * temporarily missing) the last good copy stays in use.
+ *
+ * The configured path is either one workbook or a folder. In a folder every workbook is loaded, and each
+ * sheet is reachable as `<Sheet/Key>` (when no other file has a sheet of that name) or `<File:Sheet/Key>`.
  */
 export class WorkbookCache {
   private filePath: string | null = null
-  private stamp = ''
+  private folder = false
+  private files = new Map<string, FileState>()
+  private signature = ''
   private current: SpreadsheetSource | null = null
   private error: string | null = null
 
@@ -182,30 +214,79 @@ export class WorkbookCache {
     const path = filePath?.trim() || null
     if (path !== this.filePath) {
       this.filePath = path
-      this.stamp = ''
+      this.folder = false
+      this.files.clear()
+      this.signature = ''
       this.current = null
       this.error = null
     }
     if (!path) return null
 
+    let list: string[]
     try {
       const stat = await fs.stat(path)
-      const stamp = `${stat.mtimeMs}:${stat.size}`
-      if (this.current && stamp === this.stamp) return this.current
-      const sheets = await parseXlsx(await fs.readFile(path))
-      this.current = createSpreadsheetSource(sheets)
-      this.stamp = stamp
-      this.error = null
-      return this.current
+      this.folder = stat.isDirectory()
+      list = this.folder ? await listWorkbookFiles(path) : [path]
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error)
       return this.current ?? unavailableSpreadsheet(this.error)
+    }
+
+    for (const known of [...this.files.keys()]) if (!list.includes(known)) this.files.delete(known)
+    for (const file of list) await this.refreshFile(file)
+
+    const signature = list.map((file) => `${file}=${this.files.get(file)?.stamp ?? ''}`).join('|')
+    const readable = list.filter((file) => this.files.get(file)?.sheets)
+    const errors = list
+      .map((file) => ({ file, error: this.files.get(file)?.error }))
+      .filter((item): item is { file: string; error: string } => Boolean(item.error))
+    this.error =
+      errors.length === 0
+        ? null
+        : this.folder
+          ? errors.map((item) => `${basename(item.file)}: ${item.error}`).join('\n')
+          : errors[0].error
+
+    if (readable.length === 0) {
+      if (!this.folder || errors.length > 0) {
+        return this.current ?? unavailableSpreadsheet(this.error ?? 'No workbook found.')
+      }
+    }
+    if (this.current && signature === this.signature) return this.current
+
+    const sheets: ParsedSheet[] = []
+    for (const file of readable) {
+      const stem = basename(file).replace(/\.(xlsx|xlsm)$/i, '')
+      for (const sheet of this.files.get(file)!.sheets!) {
+        sheets.push(this.folder ? { ...sheet, file: stem } : sheet)
+      }
+    }
+    this.current = createSpreadsheetSource(sheets)
+    this.signature = signature
+    return this.current
+  }
+
+  private async refreshFile(file: string): Promise<void> {
+    const state = this.files.get(file) ?? { stamp: '', sheets: null, error: null }
+    this.files.set(file, state)
+    try {
+      const stat = await fs.stat(file)
+      const stamp = `${stat.mtimeMs}:${stat.size}`
+      if (state.sheets && stamp === state.stamp) return
+      state.sheets = await parseXlsx(await fs.readFile(file))
+      state.stamp = stamp
+      state.error = null
+    } catch (error) {
+      // keep the last good copy (state.sheets) and its stamp, so the next refresh tries again
+      state.error = error instanceof Error ? error.message : String(error)
     }
   }
 
   status(): FragmentWorkbookInfo {
     return {
       path: this.filePath,
+      folder: this.folder,
+      fileCount: [...this.files.values()].filter((file) => file.sheets).length,
       sheetCount: this.current?.sheetNames().length ?? 0,
       error: this.error
     }

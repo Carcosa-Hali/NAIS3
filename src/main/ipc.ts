@@ -46,6 +46,7 @@ import {
 } from './fragments/repo'
 import { resetSequentialCounters } from './fragments/processor'
 import { previewTexts, rollPreview } from './fragments/request'
+import { readModes } from './fragments/modes'
 import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
@@ -563,6 +564,19 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
     }
     return workbookStatus()
   })
+  handle('fragmentWorkbook:pickFolder', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: t('ui.chooseFragmentWorkbookFolder'),
+      properties: ['openDirectory']
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      setSetting(WORKBOOK_SETTING, result.filePaths[0])
+    }
+    return workbookStatus()
+  })
+  // 모드: 워크북의 modes 시트 행 (프롬프트 패널의 모드 선택용). 매번 최신 파일을 읽는다
+  handle('modes:list', async () => readModes(await refreshWorkbook()))
   handle('fragmentWorkbook:clear', () => {
     setSetting(WORKBOOK_SETTING, '')
     return workbookStatus()
