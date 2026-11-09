@@ -21,6 +21,8 @@
  *   $Place = row(<Sheet/Key>)                        -> picks one row; ${Place} = its column B,
  *                                                       ${Place.header_name} = any other column of that row
  *   $Place = row(<*Sheet/Key>)                       -> walks the rows in order instead
+ *   $Pick = deal(<Sheet/*[pools~=group]>)            -> like row(), but never a row that another row() / deal()
+ *                                                       of the same image already took (drawing without replacement)
  *   $Mood := calm                                    -> fixed value: wins over every "=" definition of Mood
  *   <Sheet/${Place.category}_${Mood} ?? Sheet/default>  -> references may use variables (looked up after rolling)
  *
@@ -146,6 +148,14 @@ export interface RollOptions {
   record?: (variable: RolledVariable) => void
   /** true: every rolled variable also lists the values it could have taken (for the pin panel). */
   collectOptions?: boolean
+  /** Sheet rows already taken by row() / deal() in this roll; deal() skips them. Created by rollVariables. */
+  taken?: Set<string>
+}
+
+/** Identity of a sheet row (or fragment line) for deal(): the same row reached by any key or pool. */
+function rowIdentity(path: string, entry: FragmentEntry): string {
+  const sheet = entry.sheet ?? path.split('/')[0]
+  return `${sheet.trim().toLowerCase()}#${entry.row ?? entry.line}`
 }
 
 type VariableOption = NonNullable<RolledVariable['options']>[number]
@@ -238,20 +248,42 @@ interface PickedRow {
   entries: FragmentEntry[]
 }
 
-/** row(<Sheet/Key>): one row, following a picked cell that is only another reference (`<Other/Key>`). */
-function pickRow(argument: string, options: RollOptions, name: string): PickedRow | null {
+/**
+ * row(<Sheet/Key>): one row, following a picked cell that is only another reference (`<Other/Key>`).
+ * deal: skip rows another row() / deal() of this roll already took. The picked row is marked as taken either way.
+ */
+function pickRow(
+  argument: string,
+  options: RollOptions,
+  name: string,
+  deal = false
+): PickedRow | null {
+  const fn = deal ? 'deal' : 'row'
   let reference = REFERENCE.exec(argument.trim())
   if (!reference) {
-    fail(options.strict, `Variable "${name}": row() takes one reference, like row(<Sheet/Key>).`)
+    fail(
+      options.strict,
+      `Variable "${name}": ${fn}() takes one reference, like ${fn}(<Sheet/Key>).`
+    )
     return null
   }
   for (let depth = 0; depth <= MAX_DEPTH; depth++) {
     const sequential = Boolean(reference[1])
     const found = lookupAlternatives(options.source, reference[2].split('??'))
     if (found === null) return null // `<A ?? >`: nothing
-    const entries = found.entries ?? []
+    const all = found.entries ?? []
+    if (all.length === 0) {
+      fail(options.strict, `Variable "${name}": ${fn}(): <${reference[2].trim()}> has no rows.`)
+      return null
+    }
+    const taken = options.taken
+    const entries =
+      deal && taken ? all.filter((entry) => !taken.has(rowIdentity(found.path, entry))) : all
     if (entries.length === 0) {
-      fail(options.strict, `Variable "${name}": row(): <${reference[2].trim()}> has no rows.`)
+      fail(
+        options.strict,
+        `Variable "${name}": deal(): every row of <${reference[2].trim()}> was already taken by another row() or deal() of this image.`
+      )
       return null
     }
     const entry = sequential
@@ -267,11 +299,12 @@ function pickRow(argument: string, options: RollOptions, name: string): PickedRo
     // A cell holding nothing but another sheet reference (an index sheet pointing at the real rows): follow it.
     const inner = REFERENCE.exec(entry.line.trim())
     if (!inner || inner[2].includes('|') || !inner[2].includes('/')) {
+      options.taken?.add(rowIdentity(found.path, entry))
       return { path: found.path, entry, entries }
     }
     reference = inner
   }
-  fail(options.strict, `Variable "${name}": row() references are nested too deeply.`)
+  fail(options.strict, `Variable "${name}": ${fn}() references are nested too deeply.`)
   return null
 }
 
@@ -352,8 +385,8 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
     }
   }
 
-  if (fn === 'row') {
-    const picked = pickRow(args, options, name)
+  if (fn === 'row' || fn === 'deal') {
+    const picked = pickRow(args, options, name, fn === 'deal')
     if (!picked) return { value: '', lock: '', fields: new Map() }
     return {
       value: picked.entry.line,
@@ -500,6 +533,7 @@ export function rollVariables(
   definitions: VariableDefinition[],
   options: RollOptions
 ): Map<string, string> {
+  options.taken ??= new Set<string>()
   const values = new Map<string, string>()
   const fixed = new Set<string>()
   const seen = new Set<string>()
@@ -567,7 +601,9 @@ export function rollVariables(
         const quiet: RollOptions = {
           ...options,
           strict: false,
-          source: { ...options.source, onPick: undefined }
+          source: { ...options.source, onPick: undefined },
+          // listing the overridden definition's choices must not mark rows as taken
+          taken: new Set(options.taken)
         }
         const expression = options.prepare
           ? options.prepare(original.expression, values)

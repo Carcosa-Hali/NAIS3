@@ -440,6 +440,26 @@ export interface PromptMode {
   note?: string
 }
 
+/** Workbook check (see main/fragments/check.ts): one mode's sampled rolls. */
+export interface WorkbookCheckMode {
+  id: string
+  name: string
+  rolls: number
+  /** Rolls that would have failed the image. */
+  failed: number
+  errors: { message: string; count: number }[]
+  /** Rolls whose subject count tags (3girls, 1boy …) differ from the number of non-empty character boxes. */
+  countMismatch: number
+  countExample?: string
+  variables: { name: string; distinct: number; top: { value: string; count: number }[] }[]
+}
+
+export interface WorkbookCheckReport {
+  /** Literal references that resolve to nothing, with where they are written. */
+  missing: { place: string; reference: string }[]
+  modes: WorkbookCheckMode[]
+}
+
 /** A variable pinned in the pin panel: sent with every generation as `$name := lock`. */
 export interface PinnedVariable {
   name: string
@@ -595,6 +615,8 @@ export interface IpcInvokeMap {
   'fragmentWorkbook:pickFolder': { req: void; res: FragmentWorkbookInfo }
   /** Rows of every `modes` sheet in the workbook(s) */
   'modes:list': { req: void; res: PromptMode[] }
+  /** Checks every mode of the workbook by rolling it (no generation). */
+  'workbook:check': { req: { rolls: number }; res: WorkbookCheckReport }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
   'frags:folderCreate': { req: { name: string }; res: { id: number } }
   'frags:folderRename': { req: { id: number; name: string }; res: void }

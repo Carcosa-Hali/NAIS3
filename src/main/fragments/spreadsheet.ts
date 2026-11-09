@@ -119,11 +119,16 @@ function parseWeight(text: string | undefined): number {
   return Math.max(0, weight)
 }
 
-/** A column filter of a pool key: `[column=a,b]` (any of the values) or `[column!=a,b]` (none of them). */
+/**
+ * A column filter of a pool key: `[column=a,b]` (any of the values) or `[column!=a,b]` (none of them).
+ * `[column~=a,b]` / `[column!~=a,b]` treat the cell as a comma list: the row matches when the list holds any of
+ * the values (or none of them).
+ */
 interface ColumnFilter {
   field: string
   values: string[]
   negate: boolean
+  list: boolean
 }
 
 interface PoolKey {
@@ -135,7 +140,7 @@ interface PoolKey {
 const filterValue = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, ' ')
 
 /**
- * `*`, `**`, `*[kind=game]`, `**[kind!=show][tier=1,2]` -> PoolKey; anything else -> null (an ordinary key).
+ * `*`, `**`, `*[kind=game]`, `**[kind!=show][tier=1,2]`, `*[pools~=friends]` -> PoolKey; anything else -> null.
  * An empty value list matches empty cells: `[image_text=]`.
  */
 export function parsePoolKey(key: string): PoolKey | null {
@@ -143,11 +148,12 @@ export function parsePoolKey(key: string): PoolKey | null {
   if (!match) return null
   const filters: ColumnFilter[] = []
   for (const part of match[2].matchAll(/\[([^\]]*)\]/g)) {
-    const filter = /^\s*([^!=]+?)\s*(!?=)\s*([\s\S]*)$/.exec(part[1])
+    const filter = /^\s*([^!~=]+?)\s*(!?~?=)\s*([\s\S]*)$/.exec(part[1])
     if (!filter) return null
     filters.push({
       field: fieldName(filter[1]),
-      negate: filter[2] === '!=',
+      negate: filter[2].startsWith('!'),
+      list: filter[2].includes('~'),
       values: filter[3].split(',').map(filterValue)
     })
   }
@@ -229,8 +235,15 @@ function poolRows(bucket: SheetBucket, pool: PoolKey): SheetEntry[] {
   let rows = bucket.all
   for (const filter of pool.filters) {
     rows = rows.filter((row) => {
-      const cell = filterValue(row.fields.get(filter.field) ?? '')
-      return filter.values.includes(cell) !== filter.negate
+      const raw = row.fields.get(filter.field) ?? ''
+      const hit = filter.list
+        ? raw
+            .split(',')
+            .map(filterValue)
+            .filter(Boolean)
+            .some((item) => filter.values.includes(item))
+        : filter.values.includes(filterValue(raw))
+      return hit !== filter.negate
     })
   }
   if (!pool.evenKeys) return rows

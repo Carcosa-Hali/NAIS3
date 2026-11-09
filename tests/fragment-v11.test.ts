@@ -92,8 +92,8 @@ describe('sheet-wide pools', () => {
     expect(parsePoolKey('**[Kind != game, show][tier=]')).toEqual({
       evenKeys: true,
       filters: [
-        { field: 'kind', negate: true, values: ['game', 'show'] },
-        { field: 'tier', negate: false, values: [''] }
+        { field: 'kind', negate: true, list: false, values: ['game', 'show'] },
+        { field: 'tier', negate: false, list: false, values: [''] }
       ]
     })
   })

@@ -1,4 +1,4 @@
-# Spreadsheet fragments, rows, weights, shared variables, modes, style layer and pins
+# Spreadsheet fragments, rows, weights, shared variables, modes, style layer, pins and checks
 
 Prompt features that work together. All of them are applied per generated image, in every prompt field
 (main prompt, main negative, each character prompt, each character negative).
@@ -71,6 +71,9 @@ must come last in the prompt (a `Text:` block) in a column without `+` and add i
 | `<Sheet/**[kind!=game,show]>` | keys evenly, among rows whose `kind` is neither `game` nor `show`             |
 | `<Sheet/*[image_text=]>`      | rows whose `image_text` is empty                                              |
 | `<*Sheet/*>`                  | every row of the sheet in order, one per image (a stepper)                    |
+
+| `<Sheet/*[pools~=a]>` | rows whose `pools` cell, read as a comma list, contains `a` |
+| `<Sheet/*[pools!~=a,b]>` | rows whose `pools` list contains neither `a` nor `b` |
 
 Filters can be combined (`*[kind=game][tier=1,2]`); a comma lists alternatives. Filter values ignore case. Row 1
 (the header) is never part of a pool. Pools work everywhere a reference does: in prompts, in `random(...)`,
@@ -208,6 +211,18 @@ $Panel = row(<*Index/pages>)       -> walks the index in order, and reads each t
 
 An unknown column fails the image with the list of the row's columns.
 
+### Drawing without replacement: `deal(...)`
+
+```
+$first  = deal(<cast/*[pools~=group]>)
+$second = deal(<cast/*[pools~=group]>)
+```
+
+`deal()` works like `row()` (all columns as fields, pinned the same way), but never picks a row that another
+`row()` or `deal()` of the same image already took, however it was reached (by its own key, through another pool,
+or by a pin). Pins are rolled first, so pinning one variable to a row keeps that row out of every `deal()`. When
+every candidate row is taken, the image fails with a message.
+
 ### List, chance and arithmetic functions
 
 ```
@@ -242,6 +257,14 @@ texts. One row per mode:
 | ------------ | -------------------------- | -------- | --------------- | ---------- | ---------- | ---------------------------------- | ---------- | ----------------- |
 | random scene | `$loc = row(<places/**>)`… | …        | `<chars/one>` … | …          | `0.3, 0.6` |                                    | `1216x832` | shown in the list |
 
+Optional columns:
+
+- **extends**: the name of another mode on the same sheet. Every empty cell of the row takes that mode's value
+  (chains are followed). A cell holding just `-` stays empty instead of inheriting.
+- **set**: lines added at the top of the main prompt, typically `$name := value` lines that override the
+  inherited definitions (`$kind := games`). Not inherited.
+- **hidden**: `1` / `yes` keeps the row out of the mode list, for a base that other modes extend.
+
 The **mode bar** under the prompt preset bar lists every mode (grouped by file in a folder). Picking one fills
 the main prompt, the main negative and one character prompt per non-empty `char_N` cell, sets the size when the
 `size` cell holds one (`832x1216`), and sets character positions from `char_N_pos` (`x, y` between 0 and 1). The
@@ -275,6 +298,14 @@ lines in the prompt, without a "defined more than once" error. Variables rolled 
 (pin `$loc`, and the outfit lookups that read `${loc.outfit_category}` follow). Pins stay until removed, also
 across restarts; the active pins are shown as chips above the prompt. The variables list in the roll preview and
 in an image's metadata has the same pin buttons, plus **Pin all**, to repeat an image's rolls.
+
+## Workbook check
+
+The shield button in the mode list opens **Check workbook**. It lists every literal reference written in a sheet
+cell or a mode cell that resolves to nothing (references containing `${...}` cannot be checked this way), then
+rolls every mode 50 / 200 / 500 times without generating and shows, per mode: how many rolls would fail and why,
+how many rolls have subject count tags (`3girls`, `1boy`, `1other`) that differ from the number of character
+boxes that came out non-empty, and how often each variable took each value.
 
 ## Roll preview and image metadata
 
