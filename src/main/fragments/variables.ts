@@ -267,8 +267,24 @@ function pickRow(
     )
     return null
   }
+  /** The row picked one level up, when the current reference came from an index cell. */
+  let previous: PickedRow | null = null
   for (let depth = 0; depth <= MAX_DEPTH; depth++) {
     const sequential = Boolean(reference[1])
+    if (previous) {
+      // Only an index cell pointing at sheet rows is followed. A cell that is just a saved fragment
+      // (`<Folder/Name>`) is a value of its own row, so that row is the pick.
+      let target: ReturnType<typeof lookupAlternatives> = null
+      try {
+        target = lookupAlternatives(options.source, reference[2].split('??'))
+      } catch {
+        target = null
+      }
+      if (!target?.entries?.some((entry) => entry.sheet !== undefined)) {
+        options.taken?.add(rowIdentity(previous.path, previous.entry))
+        return previous
+      }
+    }
     const found = lookupAlternatives(options.source, reference[2].split('??'))
     if (found === null) return null // `<A ?? >`: nothing
     const all = found.entries ?? []
@@ -302,6 +318,7 @@ function pickRow(
       options.taken?.add(rowIdentity(found.path, entry))
       return { path: found.path, entry, entries }
     }
+    previous = { path: found.path, entry, entries }
     reference = inner
   }
   fail(options.strict, `Variable "${name}": ${fn}() references are nested too deeply.`)

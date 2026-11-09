@@ -94,6 +94,24 @@ describe('deal()', () => {
     expect(pinned.prompt).toBe('gamma body')
   })
 
+  it('keeps a row whose value is only a saved fragment instead of following it like an index cell', () => {
+    const withFragment = createSpreadsheetSource([
+      sheet('people', [
+        ['key', 'prompt', 'wardrobe'],
+        ['one', '<Folder/Saved one>', 'w1']
+      ])
+    ])
+    const fragments: FragmentSource = {
+      getLines: (path) => (path === 'folder/saved one' ? ['saved text'] : null)
+    }
+    const out = preprocessRequest(
+      request('$p = deal(<people/*>)\n${p} / ${p.wardrobe}'),
+      fragments,
+      { sheets: withFragment, rng: first }
+    )
+    expect(out.prompt).toBe('saved text / w1')
+  })
+
   it('fails clearly when the pool is used up', () => {
     expect(() =>
       preprocessRequest(request('$a = deal(<cast/beta>)\n$b = deal(<cast/beta>)\n${a}'), empty, {
