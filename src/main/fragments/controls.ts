@@ -8,10 +8,12 @@
  * - sheetColumnValues: every column of a sheet with its distinct values and how many rows have each, for the
  *   filter picker. A column with comma lists in its cells is offered as a list column (matched with `~=`).
  *
+ * - workbookOutline: every sheet with its keys and columns (prompt editor completion).
+ *
  * Pure module (no Electron / fs).
  */
 
-import type { ControlRow, SheetColumnValues } from '../../shared/types'
+import type { ControlRow, SheetColumnValues, WorkbookOutline } from '../../shared/types'
 import type { SpreadsheetSource } from './spreadsheet'
 
 export const CONTROLS_SHEET = 'controls'
@@ -80,4 +82,16 @@ export function sheetColumnValues(
     })
   }
   return out
+}
+
+/** Sheet names with their keys and columns, for the prompt editor's completion. */
+export function workbookOutline(sheets: SpreadsheetSource | null | undefined): WorkbookOutline {
+  if (!sheets || sheets.unavailableReason !== undefined) return { sheets: [] }
+  return {
+    sheets: sheets.sheetNames().map((name) => ({
+      name,
+      keys: sheets.listKeys(name),
+      columns: sheets.columns(name).filter(Boolean)
+    }))
+  }
 }

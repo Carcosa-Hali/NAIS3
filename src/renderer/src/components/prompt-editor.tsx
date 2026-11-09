@@ -6,6 +6,9 @@ import { useT } from '../lib/i18n'
 import { caretCoords } from '../lib/caret'
 import { highlightRanges } from '../lib/prompt-weights'
 import { fragmentAtSelection, fragmentPaths, useFragmentsStore } from '../stores/fragments-store'
+import { useGenerationStore } from '../stores/generation-store'
+import { usePinsStore } from '../stores/pins-store'
+import { outlineSheet, useWorkbookOutlineStore } from '../stores/workbook-outline-store'
 
 /**
  * 프롬프트 에디터.
@@ -25,9 +28,128 @@ const TYPO =
   'whitespace-pre-wrap break-words p-2.5 font-mono text-[length:var(--prompt-size,15px)] leading-relaxed [scrollbar-gutter:stable]'
 
 type Suggestion =
-  { kind: 'frag'; path: string } | { kind: 'tag'; tag: string; count: number; type: string }
+  | { kind: 'frag'; path: string }
+  | { kind: 'tag'; tag: string; count: number; type: string }
+  /** workbook sheet (inserted as `Sheet/`), then one of its keys / pools (inserted as `key>`) */
+  | { kind: 'sheet'; name: string }
+  | { kind: 'key'; key: string; hint?: string }
+  /** `${name` / `${name.column` */
+  | { kind: 'var'; name: string; hint?: string }
+  | { kind: 'col'; name: string }
+
+const MAX_SUGGESTIONS = 8
+const DEFINITION = /^[ \t]*\$([\p{L}_][\p{L}\p{N}_]*)[ \t]*:?=[ \t]*(.*)$/gmu
+
+/**
+ * Variables known to the prompt boxes: definitions written in the given texts, plus every variable of the
+ * last roll of the controls panel (which also knows the ones defined inside sheet cells). For row() / deal()
+ * variables, the sheet their row comes from (for `${name.column}` completion).
+ */
+function knownVariables(texts: string[]): Map<string, { name: string; sheet?: string }> {
+  const out = new Map<string, { name: string; sheet?: string }>()
+  for (const text of texts) {
+    for (const match of text.matchAll(DEFINITION)) {
+      const sheet = /^(?:row|deal)\(\s*<\*?([^/<>?]+)\//i.exec(match[2])?.[1]?.trim()
+      const key = match[1].toLowerCase()
+      out.set(key, {
+        name: match[1],
+        ...(sheet ? { sheet } : out.get(key)?.sheet ? { sheet: out.get(key)!.sheet } : {})
+      })
+    }
+  }
+  for (const variable of usePinsStore.getState().lastRoll?.variables ?? []) {
+    const key = variable.name.toLowerCase()
+    const known = out.get(key)
+    out.set(key, {
+      name: known?.name ?? variable.name,
+      ...((known?.sheet ?? variable.sheet) ? { sheet: known?.sheet ?? variable.sheet } : {})
+    })
+  }
+  return out
+}
+
+const norm = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/**
+ * Literal `<Sheet/Key>` references whose sheet is in the workbook but has no such key, as [start, end) ranges.
+ * References with `${...}`, `??` fallbacks, pools (`*`, `**`) or filters are left to the workbook check.
+ */
+function unknownReferences(text: string): [number, number][] {
+  const out: [number, number][] = []
+  if (useWorkbookOutlineStore.getState().outline.sheets.length === 0) return out
+  for (const match of text.matchAll(/<\*?([^<>|]+)>/g)) {
+    const inner = match[1]
+    if (inner.includes('${') || inner.includes('??') || inner.includes('[')) continue
+    const slash = inner.indexOf('/')
+    if (slash < 0) continue
+    const sheet = outlineSheet(inner.slice(0, slash))
+    if (!sheet) continue
+    const key = norm(inner.slice(slash + 1).replace(/#\d+\s*$/, ''))
+    if (key === '*' || key === '**' || key.startsWith('*')) continue
+    if (!sheet.keys.some((k) => norm(k) === key)) {
+      out.push([match.index, match.index + match[0].length])
+    }
+  }
+  return out
+}
+
+const LINT_STYLE: React.CSSProperties = {
+  textDecorationLine: 'underline',
+  textDecorationStyle: 'wavy',
+  textDecorationColor: 'var(--danger, #d33)',
+  textDecorationSkipInk: 'none'
+}
+
+/** Suggestions for a workbook reference being typed after `<` (sheet names, then keys and pools). */
+function workbookSuggestions(partial: string): { items: Suggestion[]; offset: number } | null {
+  const slash = partial.indexOf('/')
+  if (slash < 0) {
+    const q = partial.trim().toLowerCase()
+    const items = useWorkbookOutlineStore
+      .getState()
+      .outline.sheets.filter((sheet) => sheet.name.toLowerCase().includes(q))
+      .slice(0, MAX_SUGGESTIONS)
+      .map((sheet) => ({ kind: 'sheet' as const, name: sheet.name }))
+    return { items, offset: 0 }
+  }
+  const sheet = outlineSheet(partial.slice(0, slash))
+  if (!sheet) return null
+  const keyPart = partial.slice(slash + 1)
+  // pools, filters, fallbacks and ${...} are typed by hand
+  if (/[[\]?$#]/.test(keyPart)) return { items: [], offset: slash + 1 }
+  const q = keyPart.trim().toLowerCase()
+  const pools: Suggestion[] = q
+    ? []
+    : [
+        { kind: 'key', key: '*', hint: 'any row' },
+        { kind: 'key', key: '**', hint: 'keys evenly' }
+      ]
+  const keys = sheet.keys
+    .filter((key) => key.toLowerCase().includes(q))
+    .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)))
+    .slice(0, MAX_SUGGESTIONS - pools.length)
+    .map((key) => ({ kind: 'key' as const, key }))
+  return { items: [...pools, ...keys], offset: slash + 1 }
+}
 
 const TAG_TOKEN_SEPARATORS = /[,\n{}[\]|<>:/]/
+
+function suggestionKey(s: Suggestion): string {
+  switch (s.kind) {
+    case 'frag':
+      return `f:${s.path}`
+    case 'tag':
+      return `t:${s.tag}`
+    case 'sheet':
+      return `s:${s.name}`
+    case 'key':
+      return `k:${s.key}`
+    case 'var':
+      return `v:${s.name}`
+    case 'col':
+      return `c:${s.name}`
+  }
+}
 
 function formatCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`
@@ -134,7 +256,7 @@ export function PromptEditor({
   const syncScroll = (): void => {
     const ta = textareaRef.current
     if (!ta) return
-    for (const mirror of [mirrorRef.current, findMirrorRef.current]) {
+    for (const mirror of [mirrorRef.current, findMirrorRef.current, lintMirrorRef.current]) {
       if (!mirror) continue
       mirror.scrollTop = ta.scrollTop
       mirror.scrollLeft = ta.scrollLeft
@@ -151,6 +273,17 @@ export function PromptEditor({
 
   // 찾기 (Ctrl/Cmd+F) — 대소문자 무시, 일치 전부 하이라이트 + Enter로 순회
   const findMirrorRef = useRef<HTMLDivElement>(null)
+  // unknown <Sheet/Key> references, underlined (the outline is fetched on first use)
+  const lintMirrorRef = useRef<HTMLDivElement>(null)
+  const outlineAt = useWorkbookOutlineStore((s) => s.fetchedAt)
+  useEffect(() => {
+    if (value.includes('<')) void useWorkbookOutlineStore.getState().ensure()
+  }, [value])
+  const lint = useMemo(
+    () => unknownReferences(value),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [value, outlineAt]
+  )
   const findInputRef = useRef<HTMLInputElement>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -242,13 +375,83 @@ export function PromptEditor({
       return
     }
 
+    // `${name` / `${name.column`: variables and the columns of a row() / deal() variable's sheet
+    const variable = /\$\{([\p{L}_][\p{L}\p{N}_]*)?(?:\.([\p{L}\p{N}_]*))?$/u.exec(before)
+    if (variable) {
+      const show = (): void => {
+        if (searchSeqRef.current !== seq) return
+        const request = useGenerationStore.getState().request
+        const known = knownVariables([text, request.prompt, request.negativePrompt])
+        let items: Suggestion[]
+        if (variable[2] !== undefined) {
+          const sheet = known.get((variable[1] ?? '').toLowerCase())?.sheet
+          const q = variable[2].toLowerCase()
+          items = (sheet ? (outlineSheet(sheet)?.columns ?? []) : [])
+            .filter((column) => column.includes(q))
+            .slice(0, MAX_SUGGESTIONS)
+            .map((name) => ({ kind: 'col' as const, name }))
+          setTokenStart(cursor - variable[2].length)
+        } else {
+          const q = (variable[1] ?? '').toLowerCase()
+          items = [...known.values()]
+            .filter((v) => v.name.toLowerCase().includes(q))
+            .slice(0, MAX_SUGGESTIONS)
+            .map((v) => ({
+              kind: 'var' as const,
+              name: v.name,
+              ...(v.sheet ? { hint: v.sheet } : {})
+            }))
+          setTokenStart(cursor - (variable[1] ?? '').length)
+        }
+        setSuggestions(items)
+        setSelected(0)
+        if (items.length > 0) placePopup(items.length)
+      }
+      show()
+      void useWorkbookOutlineStore.getState().ensure().then(show)
+      return
+    }
+
     const frag = /<([^<>|]*)$/.exec(before)
     if (frag) {
-      const paths = fragmentPaths(frag[1])
-      setTokenStart(cursor - frag[1].length)
-      setSuggestions(paths.map((path) => ({ kind: 'frag', path })))
-      setSelected(0)
-      if (paths.length > 0) placePopup(paths.length)
+      const typed = frag[1]
+      const star = typed.startsWith('*') ? 1 : 0
+      const show = (): void => {
+        if (searchSeqRef.current !== seq) return
+        const book = workbookSuggestions(typed.slice(star))
+        if (book && typed.slice(star).includes('/')) {
+          // inside a sheet reference: its keys and pools only
+          setTokenStart(cursor - typed.length + star + book.offset)
+          setSuggestions(book.items)
+          setSelected(0)
+          if (book.items.length > 0) placePopup(book.items.length)
+          return
+        }
+        const allPaths = fragmentPaths(typed)
+        // sheets and saved fragments share the list; each keeps at least half of it when both have entries
+        const half = MAX_SUGGESTIONS / 2
+        const sheetCount = Math.min(
+          book?.items.length ?? 0,
+          Math.max(half, MAX_SUGGESTIONS - allPaths.length)
+        )
+        const paths = allPaths.slice(0, MAX_SUGGESTIONS - sheetCount)
+        // a `<*` walk keeps its star in front of the sheet name
+        const sheets = (book?.items ?? [])
+          .slice(0, sheetCount)
+          .map((item) =>
+            item.kind === 'sheet' && star ? { ...item, name: `*${item.name}` } : item
+          )
+        const items: Suggestion[] = [
+          ...sheets,
+          ...paths.map((path) => ({ kind: 'frag' as const, path }))
+        ]
+        setTokenStart(cursor - typed.length)
+        setSuggestions(items)
+        setSelected(0)
+        if (items.length > 0) placePopup(items.length)
+      }
+      show()
+      void useWorkbookOutlineStore.getState().ensure().then(show)
       return
     }
 
@@ -283,9 +486,22 @@ export function PromptEditor({
     const ta = textareaRef.current
     if (!ta || tokenStart < 0) return
     const cursor = ta.selectionStart
-    let insert = s.kind === 'frag' ? s.path + '>' : s.tag
-    // 완성 후 바로 다음 태그를 이어 칠 수 있게 ", " 부착 (뒤에 이미 쉼표가 있으면 생략)
-    if (!value.slice(cursor).trimStart().startsWith(',')) insert += ', '
+    const after = value.slice(cursor)
+    let insert: string
+    // a sheet name continues with its keys; variables and columns close their ${...}
+    let more = false
+    if (s.kind === 'sheet') {
+      insert = `${s.name}/`
+      more = true
+    } else if (s.kind === 'var' || s.kind === 'col') {
+      insert = after.startsWith('}') ? s.name : `${s.name}}`
+    } else {
+      const closed = s.kind === 'frag' || s.kind === 'key'
+      insert = s.kind === 'frag' ? s.path : s.kind === 'key' ? s.key : s.tag
+      if (closed && !after.startsWith('>')) insert += '>'
+      // 완성 후 바로 다음 태그를 이어 칠 수 있게 ", " 부착 (뒤에 이미 쉼표가 있으면 생략)
+      if (!after.trimStart().startsWith(',') && !after.startsWith('>')) insert += ', '
+    }
     const next = value.slice(0, tokenStart) + insert + value.slice(cursor)
     onValueChange(next)
     setSuggestions([])
@@ -293,6 +509,7 @@ export function PromptEditor({
       const pos = tokenStart + insert.length
       ta.setSelectionRange(pos, pos)
       ta.focus()
+      if (more) refreshSuggestions(next, pos)
     })
   }
 
@@ -323,6 +540,26 @@ export function PromptEditor({
         )}
         {value.endsWith('\n') && '​'}
       </div>
+
+      {/* unknown workbook references: wavy underline (glyphs transparent, like the other mirrors) */}
+      {lint.length > 0 && (
+        <div
+          ref={lintMirrorRef}
+          aria-hidden
+          className={cn(
+            TYPO,
+            'pointer-events-none absolute inset-0 overflow-hidden text-transparent'
+          )}
+        >
+          {lint.map(([start, end], i) => (
+            <span key={start}>
+              {value.slice(i === 0 ? 0 : lint[i - 1][1], start)}
+              <span style={LINT_STYLE}>{value.slice(start, end)}</span>
+            </span>
+          ))}
+          {value.slice(lint[lint.length - 1][1])}
+        </div>
+      )}
 
       {/* 찾기 하이라이트 — 가중치 미러 위에 한 겹 더 (글자는 투명, 배경만) */}
       {findOpen && hits.length > 0 && (
@@ -499,7 +736,7 @@ export function PromptEditor({
           >
             {suggestions.map((s, i) => (
               <button
-                key={s.kind === 'frag' ? `f:${s.path}` : `t:${s.tag}`}
+                key={suggestionKey(s)}
                 className={cn(
                   'flex w-full items-center gap-2 px-2.5 py-1 text-left font-mono text-[12px] text-muted',
                   i === selected && 'bg-surface-2 text-ink'
@@ -511,6 +748,25 @@ export function PromptEditor({
               >
                 {s.kind === 'frag' ? (
                   <span className="truncate text-tag-fragment">{`<${s.path}>`}</span>
+                ) : s.kind === 'sheet' ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-tag-fragment">{`<${s.name}/`}</span>
+                    <span className="shrink-0 text-[10.5px] text-faint">sheet</span>
+                  </>
+                ) : s.kind === 'key' ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-tag-fragment">{s.key}</span>
+                    {s.hint && <span className="shrink-0 text-[10.5px] text-faint">{s.hint}</span>}
+                  </>
+                ) : s.kind === 'var' || s.kind === 'col' ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-accent-ink">
+                      {s.kind === 'var' ? `\${${s.name}` : `.${s.name}`}
+                    </span>
+                    {s.kind === 'var' && s.hint && (
+                      <span className="shrink-0 text-[10.5px] text-faint">{s.hint}</span>
+                    )}
+                  </>
                 ) : (
                   <>
                     <span className={cn('min-w-0 flex-1 truncate', TYPE_COLORS[s.type])}>

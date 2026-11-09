@@ -878,6 +878,7 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel === 'modes:list') return []
   if (channel === 'workbook:check') return { missing: [], modes: [] }
   if (channel === 'workbook:controls' || channel === 'workbook:columnValues') return []
+  if (channel === 'workbook:outline') return { sheets: [] }
   if (channel === 'panels:list') return []
   if (channel === 'panels:images') return { items: [] }
   if (channel === 'panels:export') return { count: 0, canceled: true }

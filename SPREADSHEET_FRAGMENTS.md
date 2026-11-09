@@ -355,6 +355,20 @@ lines in the prompt, without a "defined more than once" error. Variables rolled 
 across restarts; the active pins are shown as chips above the prompt. The variables list in the roll preview and
 in an image's metadata has the same pin buttons, plus **Pin all**, to repeat an image's rolls.
 
+## Editor help
+
+In every prompt box:
+
+- after `<`, the workbook's sheets are suggested next to the saved fragments; picking a sheet inserts `Sheet/`
+  and lists its keys, with `*` (any row) and `**` (keys evenly) first;
+- after `${`, the variables defined in the prompt boxes and in the last roll of the controls panel are
+  suggested; after `${name.`, the columns of the sheet a `row()` / `deal()` variable reads from;
+- a literal `<Sheet/Key>` whose sheet exists but has no such key is underlined in red as you type.
+  References built with `${...}`, `??`, pools or filters are not checked there; the workbook check covers them.
+
+The workbook's sheets and keys are re-read at most every 15 seconds, so keys added in Excel appear shortly after
+saving.
+
 ## Workbook check
 
 The shield button in the mode list opens **Check workbook**. It lists every literal reference written in a sheet

@@ -49,7 +49,7 @@ import { previewTexts, rollPreview } from './fragments/request'
 import { readModes, readPanels } from './fragments/modes'
 import { exportPanels, panelDir, panelImages } from './images/panels'
 import { checkWorkbook } from './fragments/check'
-import { readControls, sheetColumnValues } from './fragments/controls'
+import { readControls, sheetColumnValues, workbookOutline } from './fragments/controls'
 import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
@@ -581,6 +581,7 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   // 모드: 워크북의 modes 시트 행 (프롬프트 패널의 모드 선택용). 매번 최신 파일을 읽는다
   handle('modes:list', async () => readModes(await refreshWorkbook()))
   handle('workbook:controls', async () => readControls(await refreshWorkbook()))
+  handle('workbook:outline', async () => workbookOutline(await refreshWorkbook()))
   handle('panels:list', async () => readPanels(await refreshWorkbook()))
   handle('panels:images', (target) => ({ items: panelImages(target) }))
   handle('panels:openFolder', async (target) => {

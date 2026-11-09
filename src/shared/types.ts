@@ -460,6 +460,11 @@ export interface ControlRow {
   note: string
 }
 
+/** Sheets with their keys and columns (prompt editor completion). */
+export interface WorkbookOutline {
+  sheets: { name: string; keys: string[]; columns: string[] }[]
+}
+
 /** One column of a sheet with its distinct values (controls panel filters). */
 export interface SheetColumnValues {
   column: string
@@ -671,6 +676,8 @@ export interface IpcInvokeMap {
   'workbook:check': { req: { rolls: number }; res: WorkbookCheckReport }
   /** The workbook's `controls` sheet rows (controls panel labels, groups, filters). */
   'workbook:controls': { req: void; res: ControlRow[] }
+  /** Sheet names, keys and columns (prompt editor completion). */
+  'workbook:outline': { req: void; res: WorkbookOutline }
   /** Every doujin's panels (the `panels` sheets of the workbook folder). */
   'panels:list': { req: void; res: DoujinPanels[] }
   /** Images generated for one panel, newest first. */
