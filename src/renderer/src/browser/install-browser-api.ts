@@ -877,6 +877,7 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel.startsWith('fragmentWorkbook:')) return { path: null, sheetCount: 0, error: null }
   if (channel === 'modes:list') return []
   if (channel === 'workbook:check') return { missing: [], modes: [] }
+  if (channel === 'workbook:controls' || channel === 'workbook:columnValues') return []
   if (channel === 'settings:getSaveDir') return { dir: 'Browser downloads', isDefault: true }
   if (channel === 'settings:pickSaveDir') return { dir: null }
   if (channel === 'settings:resetSaveDir') return { dir: 'Browser downloads' }

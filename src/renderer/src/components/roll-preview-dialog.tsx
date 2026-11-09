@@ -87,7 +87,14 @@ export function RollPreviewDialog({
                   <Text label={t('ui.negative')} value={result.negativePrompt} />
                   {result.characters.map((c, i) => (
                     <div key={i} className="flex flex-col gap-1.5">
-                      <Text label={t('ui.characterValue', i + 1)} value={c.prompt} />
+                      <Text
+                        label={
+                          c.center
+                            ? `${t('ui.characterValue', i + 1)} @ ${c.center.x}, ${c.center.y}`
+                            : t('ui.characterValue', i + 1)
+                        }
+                        value={c.prompt}
+                      />
                       {c.negativePrompt && <Text label="uc" value={c.negativePrompt} small />}
                     </div>
                   ))}

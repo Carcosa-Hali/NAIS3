@@ -423,7 +423,13 @@ export interface RolledVariable {
   /** The value came from a pin (pin panel), not from a roll. */
   pinned?: boolean
   /** Values the variable could have taken (roll preview only; for the pin panel's value list). */
-  options?: { label: string; lock: string }[]
+  options?: {
+    label: string
+    lock: string
+  }[] /** How the value was rolled: random(), row(), deal(), shuffle()/list(), chance(), calc() or a plain value. */
+  kind?: 'random' | 'row' | 'deal' | 'list' | 'chance' | 'calc' | 'value'
+  /** row() / deal(): the sheet the picked row is on (as the reference names it). */
+  sheet?: string
 }
 
 /** A row of a `modes` sheet: the prompt texts a mode puts into the prompt panel. */
@@ -438,6 +444,26 @@ export interface PromptMode {
   characters: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
   size?: { width: number; height: number }
   note?: string
+}
+
+/** A row of the optional `controls` sheet: how the controls panel shows one variable. */
+export interface ControlRow {
+  variable: string
+  label: string
+  group: string
+  /** Columns offered as filters for a row() / deal() variable. Empty: every filterable column. */
+  filters: string[]
+  /** Listed under "advanced" only. */
+  hidden: boolean
+  note: string
+}
+
+/** One column of a sheet with its distinct values (controls panel filters). */
+export interface SheetColumnValues {
+  column: string
+  /** Cells are comma lists: filter with `~=`. */
+  list: boolean
+  values: { value: string; count: number }[]
 }
 
 /** Workbook check (see main/fragments/check.ts): one mode's sampled rolls. */
@@ -483,7 +509,7 @@ export type RollPreviewResult =
       ok: true
       prompt: string
       negativePrompt: string
-      characters: { prompt: string; negativePrompt: string }[]
+      characters: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
       variables: RolledVariable[]
       picks: RollPick[]
     }
@@ -617,6 +643,10 @@ export interface IpcInvokeMap {
   'modes:list': { req: void; res: PromptMode[] }
   /** Checks every mode of the workbook by rolling it (no generation). */
   'workbook:check': { req: { rolls: number }; res: WorkbookCheckReport }
+  /** The workbook's `controls` sheet rows (controls panel labels, groups, filters). */
+  'workbook:controls': { req: void; res: ControlRow[] }
+  /** Distinct values per column of a sheet (controls panel filters). */
+  'workbook:columnValues': { req: { sheet: string }; res: SheetColumnValues[] }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
   'frags:folderCreate': { req: { name: string }; res: { id: number } }
   'frags:folderRename': { req: { id: number; name: string }; res: void }

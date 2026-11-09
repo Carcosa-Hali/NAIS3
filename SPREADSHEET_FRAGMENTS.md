@@ -1,4 +1,4 @@
-# Spreadsheet fragments, rows, weights, shared variables, modes, style layer, pins and checks
+# Spreadsheet fragments, rows, weights, shared variables, modes, style layer, positions, pins, controls and checks
 
 Prompt features that work together. All of them are applied per generated image, in every prompt field
 (main prompt, main negative, each character prompt, each character negative).
@@ -286,12 +286,47 @@ without clearing it.
 - In the main prompt the style text goes **right before the first `Text:` block**, so rendered text stays the
   last thing in the prompt. Without a `Text:` block it is added at the end. In the negative it is added at the end.
 
+## Character positions: `@pos(x, y)`
+
+A character prompt may contain `@pos(x, y)` (0 to 1, from the top left), written directly or coming from a
+fragment, a cell or a `${...}` branch. It is removed from the prompt and sets that character's position, and
+coordinates are turned on for the image. When several come up, the last one wins, so a general default can be
+followed by a more specific value: `@pos(<positions/${act}_lead ?? positions/lead>)`. An empty `@pos()` (a blank
+position cell) is removed and changes nothing, so positions can be left to NovelAI until a cell is filled. The roll
+preview shows each character's position.
+
 ## Pins
 
-The **pin** button next to the prompt header opens the pin panel. It rolls the current prompts once and lists
+The **pin** button next to the prompt header opens the **controls & pins** panel. It rolls the current prompts once and lists
 every variable with its value. Open a variable to see the values it can take (the options of its `random(...)`,
 the rows of its `row(...)`, the labels of `chance(...)`), search them, and click one to pin it, or type a value or
 expression of your own. The pin button next to a value pins the value it has now.
+
+Open a variable to choose how it rolls:
+
+- **one value**: click it in the value list;
+- **a subset** (random() variables): tick several values and press _Roll among N ticked_; the pin becomes
+  `random(a, b, …)`, so the variable keeps rolling, but only among those;
+- **a filter** (row() / deal() variables): pick a column of the row's sheet and tick values; the pin becomes
+  `row(<sheet/*[column=a, b]>)` (or `deal(...)`, or `~=` for a comma-list column), e.g. "any location whose
+  outfit_category is wedding";
+- **Random as defined** removes the pin.
+
+Pins belong to the mode they were set in: applying another mode swaps in that mode's pins, and switching back
+restores them.
+
+### The `controls` sheet
+
+Optional. One row per variable, to give the panel labels and an order:
+
+| variable | label    | group | filters               | hidden | note           |
+| -------- | -------- | ----- | --------------------- | ------ | -------------- |
+| loc      | Location | Scene | pool, outfit_category |        | shown on hover |
+| bull_1   | Bull     | Cast  | pools, key            |        |                |
+| pose     |          |       |                       | yes    |                |
+
+Variables with a row appear first, under their group, in sheet order; `filters` limits the filter columns offered
+(empty: every column with short values). Variables without a row, or with `hidden`, are listed under _Advanced_.
 
 A pin is sent with every image as `$name := ...` and wins over every definition of that name, including `:=`
 lines in the prompt, without a "defined more than once" error. Variables rolled after it use the pinned value

@@ -330,6 +330,8 @@ interface Evaluated {
   lock: string
   fields?: ReadonlyMap<string, string>
   options?: VariableOption[]
+  kind?: RolledVariable['kind']
+  sheet?: string
 }
 
 /** A list's items: literal options and every non-empty line of each `<reference>`. Weights are ignored. */
@@ -394,6 +396,7 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
       ]
     if (item.from) options.source.onPick?.(item.from.path, item.from.entry)
     return {
+      kind: 'random',
       value: item.text,
       lock: item.lock,
       ...(options.collectOptions
@@ -404,8 +407,10 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
 
   if (fn === 'row' || fn === 'deal') {
     const picked = pickRow(args, options, name, fn === 'deal')
-    if (!picked) return { value: '', lock: '', fields: new Map() }
+    if (!picked) return { kind: fn, value: '', lock: '', fields: new Map() }
     return {
+      kind: fn,
+      sheet: picked.entry.sheet ?? picked.path.split('/')[0],
       value: picked.entry.line,
       lock: `row(${referenceLock(picked.path, picked.entry)})`,
       fields: picked.entry.fields ?? new Map(),
@@ -431,7 +436,12 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
         ;[items[i], items[j]] = [items[j], items[i]]
       }
     }
-    return { value: items.join(', '), lock: `list(${items.join(', ')})`, fields: listFields(items) }
+    return {
+      kind: 'list',
+      value: items.join(', '),
+      lock: `list(${items.join(', ')})`,
+      fields: listFields(items)
+    }
   }
 
   if (fn === 'chance') {
@@ -442,6 +452,7 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
     if (percent === null) return { value: no, lock: no }
     const value = options.rng() * 100 < percent ? yes : no
     return {
+      kind: 'chance',
       value,
       lock: value,
       ...(options.collectOptions
@@ -453,7 +464,7 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
   if (fn === 'calc') {
     try {
       const value = formatNumber(calculate(args))
-      return { value, lock: value }
+      return { kind: 'calc', value, lock: value }
     } catch (error) {
       fail(
         options.strict,
@@ -464,7 +475,7 @@ function evaluate(name: string, expression: string, options: RollOptions): Evalu
   }
 
   if (!expression) fail(options.strict, `Variable "${name}" has no value.`)
-  return { value: expression, lock: expression }
+  return { kind: 'value', value: expression, lock: expression }
 }
 
 function formatNumber(value: number): string {
@@ -625,8 +636,12 @@ export function rollVariables(
         const expression = options.prepare
           ? options.prepare(original.expression, values)
           : original.expression
-        const choices = evaluate(name, expression.trim(), quiet).options
+        const overridden = evaluate(name, expression.trim(), quiet)
+        const choices = overridden.options
         if (choices && choices.length > 0) result.options = choices
+        // the panel offers controls for the definition the pin overrides (deal stays deal, its sheet)
+        if (overridden.kind) result.kind = overridden.kind
+        if (overridden.sheet) result.sheet = overridden.sheet
       } catch {
         // the pin's own value stays the only choice
       }
@@ -640,6 +655,8 @@ export function rollVariables(
       name,
       value: result.value,
       lock: result.lock,
+      ...(result.kind ? { kind: result.kind } : {}),
+      ...(result.sheet ? { sheet: result.sheet } : {}),
       ...(isPinned ? { pinned: true } : {}),
       ...(result.options && result.options.length > 0 ? { options: result.options } : {})
     })

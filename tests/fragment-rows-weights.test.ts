@@ -260,9 +260,15 @@ describe('fixed values and rolled-variable records', () => {
       () => 0.9
     )
     expect(out.rolledVariables).toEqual([
-      { name: 'm', value: 'tense', lock: 'tense' },
-      { name: 'place', value: 'beach, sand', lock: 'row(<places/outdoor#3>)' },
-      { name: 'w', value: 'snowy', lock: 'random(<weather#3>)' }
+      { name: 'm', value: 'tense', lock: 'tense', kind: 'random' },
+      {
+        name: 'place',
+        value: 'beach, sand',
+        lock: 'row(<places/outdoor#3>)',
+        kind: 'row',
+        sheet: 'places'
+      },
+      { name: 'w', value: 'snowy', lock: 'random(<weather#3>)', kind: 'random' }
     ])
     const locked = out.rolledVariables!.map((v) => `$${v.name} := ${v.lock}`).join('\n')
     const again = run(

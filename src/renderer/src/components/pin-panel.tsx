@@ -3,13 +3,14 @@ import {
   ChevronDown,
   ChevronRight,
   Dices,
+  SlidersHorizontal,
   Loader2,
   Pin,
   PinOff,
   X
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { RolledVariable } from '@shared/types'
+import type { ControlRow, RolledVariable, SheetColumnValues } from '@shared/types'
 import { usePinsStore } from '../stores/pins-store'
 import { cn } from '../lib/utils'
 import { useT } from '../lib/i18n'
@@ -43,7 +44,7 @@ export function PinButton(): React.JSX.Element {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[380px] p-0">
+      <PopoverContent align="end" className="w-[440px] p-0">
         {open && <PinPanel />}
       </PopoverContent>
     </Popover>
@@ -81,6 +82,25 @@ export function PinChips(): React.JSX.Element | null {
   )
 }
 
+/** Column values per sheet, fetched once per panel session (the sheet may change between openings). */
+const columnCache = new Map<string, Promise<SheetColumnValues[]>>()
+
+function columnValues(sheet: string): Promise<SheetColumnValues[]> {
+  const key = sheet.toLowerCase()
+  let pending = columnCache.get(key)
+  if (!pending) {
+    pending = window.nais.invoke('workbook:columnValues', { sheet }).catch(() => [])
+    columnCache.set(key, pending)
+  }
+  return pending
+}
+
+/** `random(<a#1>)` -> `<a#1>`; a literal option stays as it is. */
+function optionItem(lock: string): string {
+  const match = /^random\(([\s\S]*)\)$/.exec(lock.trim())
+  return match ? match[1] : lock
+}
+
 function PinPanel(): React.JSX.Element {
   const t = useT()
   const pins = usePinsStore((s) => s.pins)
@@ -90,21 +110,66 @@ function PinPanel(): React.JSX.Element {
   const unpin = usePinsStore((s) => s.unpin)
   const clear = usePinsStore((s) => s.clear)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [controls, setControls] = useState<ControlRow[]>([])
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
-  // Fresh list of variables (and their values) every time the panel opens.
+  // Fresh list of variables (and their values) and of the controls sheet every time the panel opens.
   useEffect(() => {
+    columnCache.clear()
     void roll()
+    void window.nais
+      .invoke('workbook:controls', undefined)
+      .then(setControls)
+      .catch(() => setControls([]))
   }, [roll])
 
-  const variables = lastRoll?.variables ?? []
+  const variables = useMemo(() => lastRoll?.variables ?? [], [lastRoll])
   const pinnedNames = new Set(pins.map((p) => p.name.toLowerCase()))
   // pins whose variable did not come up in this roll (renamed, or the mode changed)
   const stray = pins.filter(
     (p) => !variables.some((v) => v.name.toLowerCase() === p.name.toLowerCase())
   )
 
+  // Variables with a visible controls row come first, grouped in sheet order; the rest is "advanced".
+  const { groups, advanced } = useMemo(() => {
+    const byName = new Map(variables.map((v) => [v.name.toLowerCase(), v]))
+    const used = new Set<string>()
+    const groups: { group: string; items: { variable: RolledVariable; control: ControlRow }[] }[] =
+      []
+    for (const control of controls) {
+      const variable = byName.get(control.variable.toLowerCase())
+      if (!variable || control.hidden || used.has(variable.name.toLowerCase())) continue
+      used.add(variable.name.toLowerCase())
+      let group = groups.find((g) => g.group === control.group)
+      if (!group) {
+        group = { group: control.group, items: [] }
+        groups.push(group)
+      }
+      group.items.push({ variable, control })
+    }
+    const hiddenControls = new Map(
+      controls.filter((c) => c.hidden).map((c) => [c.variable.toLowerCase(), c])
+    )
+    const advanced = variables
+      .filter((v) => !used.has(v.name.toLowerCase()))
+      .map((variable) => ({ variable, control: hiddenControls.get(variable.name.toLowerCase()) }))
+    return { groups, advanced }
+  }, [variables, controls])
+  const showAdvanced = groups.length === 0 || advancedOpen
+
+  const row = (variable: RolledVariable, control?: ControlRow): React.JSX.Element => (
+    <VariableRow
+      key={variable.name}
+      variable={variable}
+      control={control}
+      pinned={pinnedNames.has(variable.name.toLowerCase())}
+      expanded={expanded === variable.name}
+      onToggle={() => setExpanded(expanded === variable.name ? null : variable.name)}
+    />
+  )
+
   return (
-    <div className="flex max-h-[70vh] flex-col">
+    <div className="flex max-h-[75vh] flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
         <p className="text-[12.5px] font-medium text-ink">{t('ui.pinPanel')}</p>
         <div className="flex items-center gap-1">
@@ -146,17 +211,26 @@ function PinPanel(): React.JSX.Element {
         {lastRoll && variables.length === 0 && lastRoll.ok && (
           <p className="px-3 py-6 text-center text-[12px] text-faint">{t('ui.noVariables')}</p>
         )}
-        <ul>
-          {variables.map((variable) => (
-            <VariableRow
-              key={variable.name}
-              variable={variable}
-              pinned={pinnedNames.has(variable.name.toLowerCase())}
-              expanded={expanded === variable.name}
-              onToggle={() => setExpanded(expanded === variable.name ? null : variable.name)}
-            />
-          ))}
-        </ul>
+        {groups.map(({ group, items }) => (
+          <div key={group}>
+            {group && (
+              <p className="border-b border-line/60 bg-surface-2/40 px-3 py-1 text-[10.5px] font-medium uppercase tracking-wide text-faint">
+                {group}
+              </p>
+            )}
+            <ul>{items.map(({ variable, control }) => row(variable, control))}</ul>
+          </div>
+        ))}
+        {groups.length > 0 && advanced.length > 0 && (
+          <button
+            className="flex w-full items-center gap-1 border-b border-line/60 bg-surface-2/40 px-3 py-1 text-left text-[10.5px] font-medium uppercase tracking-wide text-faint hover:text-ink"
+            onClick={() => setAdvancedOpen((v) => !v)}
+          >
+            {advancedOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            {t('ui.controlsAdvanced', advanced.length)}
+          </button>
+        )}
+        {showAdvanced && <ul>{advanced.map(({ variable, control }) => row(variable, control))}</ul>}
         {stray.length > 0 && (
           <div className="border-t border-line px-3 py-1.5">
             <p className="pb-1 text-[11px] text-faint">{t('ui.pinsNotInPrompt')}</p>
@@ -178,11 +252,13 @@ function PinPanel(): React.JSX.Element {
 
 function VariableRow({
   variable,
+  control,
   pinned,
   expanded,
   onToggle
 }: {
   variable: RolledVariable
+  control?: ControlRow
   pinned: boolean
   expanded: boolean
   onToggle: () => void
@@ -195,6 +271,7 @@ function VariableRow({
   )
   const [query, setQuery] = useState('')
   const [custom, setCustom] = useState('')
+  const [chosen, setChosen] = useState<string[]>([])
 
   const options = useMemo(() => {
     const all = variable.options ?? []
@@ -203,6 +280,19 @@ function VariableRow({
     return hits.slice(0, 200)
   }, [variable.options, query])
   const total = variable.options?.length ?? 0
+  const subset = variable.kind === 'random' && total > 1
+  const filterable = (variable.kind === 'row' || variable.kind === 'deal') && !!variable.sheet
+
+  const pinSubset = (): void => {
+    const picked = (variable.options ?? []).filter((o) => chosen.includes(o.lock))
+    if (picked.length === 0) return
+    pin({
+      name: variable.name,
+      lock: `random(${picked.map((o) => optionItem(o.lock)).join(', ')})`,
+      label: t('ui.controlsAnyOf', picked.map((o) => shorten(o.label, 24)).join(', '))
+    })
+    setChosen([])
+  }
 
   const shown = pinRecord?.label ?? variable.value
   return (
@@ -211,8 +301,23 @@ function VariableRow({
         <button className="text-faint hover:text-ink" onClick={onToggle}>
           {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </button>
-        <button className="flex min-w-0 flex-1 items-baseline gap-2 text-left" onClick={onToggle}>
-          <span className="shrink-0 font-mono text-[11.5px] text-accent-ink">${variable.name}</span>
+        <button
+          className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+          onClick={onToggle}
+          title={control?.note || undefined}
+        >
+          {control && control.label !== variable.name ? (
+            <span className="shrink-0 text-[12px] font-medium text-ink">
+              {control.label}{' '}
+              <span className="font-mono text-[10.5px] font-normal text-faint">
+                ${variable.name}
+              </span>
+            </span>
+          ) : (
+            <span className="shrink-0 font-mono text-[11.5px] text-accent-ink">
+              ${variable.name}
+            </span>
+          )}
           <span className="min-w-0 truncate font-mono text-[11px] text-muted" title={shown}>
             {shown ? shorten(shown, 80) : t('ui.none')}
           </span>
@@ -240,23 +345,56 @@ function VariableRow({
       </div>
       {expanded && (
         <div className="flex flex-col gap-1.5 bg-surface-2/40 px-3 pb-2 pt-1">
+          {pinned && (
+            <button
+              className="self-start rounded-md border border-line bg-paper px-2 py-0.5 text-[11.5px] text-ink hover:bg-surface-2"
+              onClick={() => unpin(variable.name)}
+            >
+              <Dices size={11} className="mr-1 inline" />
+              {t('ui.controlsRandomAsDefined')}
+            </button>
+          )}
+          {filterable && (
+            <FilterPicker
+              sheet={variable.sheet!}
+              fn={variable.kind as 'row' | 'deal'}
+              allowed={control?.filters ?? []}
+              onPin={(lock, label) => pin({ name: variable.name, lock, label })}
+            />
+          )}
           {total > 0 && (
             <>
               <input
-                autoFocus
+                autoFocus={!filterable}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('ui.searchValuesValue', total)}
                 className="h-7 w-full rounded-md border border-line bg-paper px-2 text-[12px] text-ink outline-none placeholder:text-muted focus:border-accent/50"
               />
+              {subset && <p className="text-[10.5px] text-faint">{t('ui.controlsSubsetHint')}</p>}
               <ul className="max-h-48 overflow-y-auto rounded-md border border-line bg-paper">
                 {options.map((option) => {
                   const current = pinRecord?.lock === option.lock
+                  const checked = chosen.includes(option.lock)
                   return (
-                    <li key={option.lock}>
+                    <li key={option.lock} className="flex items-center">
+                      {subset && (
+                        <input
+                          type="checkbox"
+                          className="ml-2 size-3 shrink-0 accent-[var(--accent)]"
+                          checked={checked}
+                          onChange={() =>
+                            setChosen(
+                              checked
+                                ? chosen.filter((c) => c !== option.lock)
+                                : [...chosen, option.lock]
+                            )
+                          }
+                        />
+                      )}
                       <button
                         className={cn(
-                          'flex w-full items-center gap-1.5 px-2 py-1 text-left font-mono text-[11px] hover:bg-surface-2',
+                          'flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-left font-mono text-[11px] hover:bg-surface-2',
                           current ? 'text-accent-ink' : 'text-ink'
                         )}
                         title={option.lock}
@@ -280,6 +418,14 @@ function VariableRow({
                   </li>
                 )}
               </ul>
+              {subset && chosen.length > 0 && (
+                <button
+                  className="self-start rounded-md bg-accent px-2 py-0.5 text-[11.5px] font-medium text-paper hover:opacity-90"
+                  onClick={pinSubset}
+                >
+                  {t('ui.controlsPinSubset', chosen.length)}
+                </button>
+              )}
             </>
           )}
           <form
@@ -307,5 +453,123 @@ function VariableRow({
         </div>
       )}
     </li>
+  )
+}
+
+/**
+ * "Random among the rows where <column> is one of …": pins `row(<sheet/*[column=a,b]>)` (or `deal(...)`, or
+ * `~=` for a comma-list column), so the variable keeps rolling, but only within the chosen subset.
+ */
+function FilterPicker({
+  sheet,
+  fn,
+  allowed,
+  onPin
+}: {
+  sheet: string
+  fn: 'row' | 'deal'
+  allowed: string[]
+  onPin: (lock: string, label: string) => void
+}): React.JSX.Element | null {
+  const t = useT()
+  const [columns, setColumns] = useState<SheetColumnValues[] | null>(null)
+  const [column, setColumn] = useState('')
+  const [values, setValues] = useState<string[]>([])
+  const [query, setQuery] = useState('')
+
+  // a fresh array arrives on every render: depend on its contents
+  const allowedKey = allowed.join('|')
+  useEffect(() => {
+    let cancelled = false
+    void columnValues(sheet).then((all) => {
+      if (cancelled) return
+      const wanted = allowedKey
+        .split('|')
+        .filter(Boolean)
+        .map((a) => a.toLowerCase().replace(/[^a-z0-9]+/g, '_'))
+      const usable = wanted.length > 0 ? all.filter((c) => wanted.includes(c.column)) : all
+      setColumns(usable)
+      setColumn(usable[0]?.column ?? '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sheet, allowedKey])
+
+  if (columns === null) return null
+  if (columns.length === 0) return null
+  const current = columns.find((c) => c.column === column)
+  const q = query.trim().toLowerCase()
+  const shownValues = (current?.values ?? []).filter((v) => !q || v.value.includes(q)).slice(0, 200)
+
+  const apply = (): void => {
+    if (!current || values.length === 0) return
+    const op = current.list ? '~=' : '='
+    onPin(
+      `${fn}(<${sheet}/*[${current.column}${op}${values.join(', ')}]>)`,
+      t('ui.controlsWhere', current.column, values.join(', '))
+    )
+    setValues([])
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-line bg-paper p-1.5">
+      <div className="flex items-center gap-1 text-[11px] text-muted">
+        <SlidersHorizontal size={11} className="shrink-0" />
+        <span className="shrink-0">{t('ui.controlsFilterBy')}</span>
+        <select
+          className="h-6 min-w-0 flex-1 rounded border border-line bg-paper px-1 text-[11.5px] text-ink"
+          value={column}
+          onChange={(e) => {
+            setColumn(e.target.value)
+            setValues([])
+          }}
+        >
+          {columns.map((c) => (
+            <option key={c.column} value={c.column}>
+              {c.column}
+              {c.list ? ' (list)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      {(current?.values.length ?? 0) > 12 && (
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('ui.searchValuesValue', current?.values.length ?? 0)}
+          className="h-6 w-full rounded border border-line bg-paper px-1.5 text-[11.5px] text-ink outline-none placeholder:text-muted focus:border-accent/50"
+        />
+      )}
+      <ul className="max-h-36 overflow-y-auto">
+        {shownValues.map((v) => {
+          const checked = values.includes(v.value)
+          return (
+            <li key={v.value}>
+              <label className="flex cursor-pointer items-center gap-1.5 px-1 py-0.5 text-[11px] text-ink hover:bg-surface-2">
+                <input
+                  type="checkbox"
+                  className="size-3 accent-[var(--accent)]"
+                  checked={checked}
+                  onChange={() =>
+                    setValues(checked ? values.filter((x) => x !== v.value) : [...values, v.value])
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate font-mono">{v.value}</span>
+                <span className="text-faint">{v.count}</span>
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+      {values.length > 0 && (
+        <button
+          className="self-start rounded-md bg-accent px-2 py-0.5 text-[11.5px] font-medium text-paper hover:opacity-90"
+          onClick={apply}
+        >
+          {t('ui.controlsPinFilter', values.length)}
+        </button>
+      )}
+    </div>
   )
 }

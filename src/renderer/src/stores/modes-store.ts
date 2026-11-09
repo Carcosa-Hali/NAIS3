@@ -3,6 +3,7 @@ import type { PromptMode } from '@shared/types'
 import { t } from '../lib/i18n'
 import { useCharactersStore } from './characters-store'
 import { useGenerationStore } from './generation-store'
+import { usePinsStore } from './pins-store'
 import { usePromptPresetsStore } from './prompt-presets-store'
 
 /**
@@ -53,5 +54,7 @@ export const useModesStore = create<ModesState>((set) => ({
       )
     set({ activeId: mode.id })
     localStorage.setItem(ACTIVE_KEY, mode.id)
+    // every mode keeps its own pins
+    usePinsStore.getState().switchMode(mode.id)
   }
 }))

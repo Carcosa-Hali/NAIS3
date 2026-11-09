@@ -255,7 +255,9 @@ describe('pins', () => {
       { rng: first }
     )
     expect(out.prompt).toBe('d')
-    expect(out.rolledVariables).toEqual([{ name: 'm', value: 'd', lock: 'd', pinned: true }])
+    expect(out.rolledVariables).toEqual([
+      { name: 'm', value: 'd', lock: 'd', kind: 'value', pinned: true }
+    ])
     expect(out.pinnedVariables).toBeUndefined()
   })
 

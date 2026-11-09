@@ -48,6 +48,7 @@ import { resetSequentialCounters } from './fragments/processor'
 import { previewTexts, rollPreview } from './fragments/request'
 import { readModes } from './fragments/modes'
 import { checkWorkbook } from './fragments/check'
+import { readControls, sheetColumnValues } from './fragments/controls'
 import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
@@ -578,6 +579,10 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   })
   // 모드: 워크북의 modes 시트 행 (프롬프트 패널의 모드 선택용). 매번 최신 파일을 읽는다
   handle('modes:list', async () => readModes(await refreshWorkbook()))
+  handle('workbook:controls', async () => readControls(await refreshWorkbook()))
+  handle('workbook:columnValues', async ({ sheet }) =>
+    sheetColumnValues(await refreshWorkbook(), sheet)
+  )
   handle('workbook:check', async ({ rolls }) => {
     const sheets = await refreshWorkbook()
     return checkWorkbook(

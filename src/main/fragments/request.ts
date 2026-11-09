@@ -9,6 +9,7 @@ import {
   PromptVariableError,
   resolveVariableBlocks,
   rollVariables,
+  tidyCommas,
   type RolledVariable,
   type VariableDefinition
 } from './variables'
@@ -55,6 +56,29 @@ function joinNegative(main: string, extra: string): string {
   if (!addition) return main
   const head = main.trim().replace(/,+$/, '').trim()
   return head ? `${head}, ${addition}` : addition
+}
+
+/** `@pos(x, y)` in a character prompt: that character's position (0..1), wherever the text came from. */
+const POSITION = /@pos\(([^()]*)\)/g
+const COORDINATES = /^\s*(-?\d*\.?\d+)\s*[,;\s]\s*(-?\d*\.?\d+)\s*$/
+
+/**
+ * Removes every `@pos(...)` from a character prompt. The last readable one sets the position (clamped to 0..1),
+ * so a more specific source written later (an act's own position) wins over an earlier default. An empty or
+ * unreadable `@pos()` (a position cell left blank) is removed without setting anything.
+ */
+export function takePosition(text: string): { text: string; center?: { x: number; y: number } } {
+  let center: { x: number; y: number } | undefined
+  const rest = text.replace(POSITION, (_match, inner: string) => {
+    const coordinates = COORDINATES.exec(inner)
+    if (coordinates) {
+      const clamp = (value: number): number => Math.min(1, Math.max(0, value))
+      center = { x: clamp(Number(coordinates[1])), y: clamp(Number(coordinates[2])) }
+    }
+    return ''
+  })
+  if (rest === text) return { text }
+  return { text: tidyCommas(rest), ...(center ? { center } : {}) }
 }
 
 function hasStyle(style: StyleLayer | undefined): style is StyleLayer {
@@ -209,6 +233,16 @@ export function preprocessRequest(
       pipeline.finish(styleCollected.negativePrompt)
     )
   }
+  let positioned = false
+  finished.characterPrompts = finished.characterPrompts.map((character) => {
+    const taken = takePosition(character.prompt)
+    if (!taken.center)
+      return taken.text === character.prompt ? character : { ...character, prompt: taken.text }
+    positioned = true
+    return { ...character, prompt: taken.text, center: taken.center }
+  })
+  // Positions written in the prompts only mean something with coordinates on.
+  if (positioned) finished.useCoords = true
   return variables.length > 0 ? { ...finished, rolledVariables: variables } : finished
 }
 
@@ -265,10 +299,14 @@ export function rollPreview(
       ok: true,
       prompt,
       negativePrompt,
-      characters: input.characters.map((_c, i) => ({
-        prompt: rest[i * 2],
-        negativePrompt: rest[i * 2 + 1]
-      })),
+      characters: input.characters.map((_c, i) => {
+        const taken = takePosition(rest[i * 2])
+        return {
+          prompt: taken.text,
+          negativePrompt: rest[i * 2 + 1],
+          ...(taken.center ? { center: taken.center } : {})
+        }
+      }),
       variables,
       picks
     }
