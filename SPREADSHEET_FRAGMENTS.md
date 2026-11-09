@@ -262,7 +262,7 @@ Optional columns:
 - **extends**: the name of another mode on the same sheet. Every empty cell of the row takes that mode's value
   (chains are followed). A cell holding just `-` stays empty instead of inheriting.
 - **set**: lines added at the top of the main prompt, typically `$name := value` lines that override the
-  inherited definitions (`$kind := games`). Not inherited.
+  inherited definitions (`$kind := games`). Inherited along `extends`; a row's line for a name replaces its parent's.
 - **hidden**: `1` / `yes` keeps the row out of the mode list, for a base that other modes extend.
 
 The **mode bar** under the prompt preset bar lists every mode (grouped by file in a folder). Picking one fills
@@ -272,6 +272,27 @@ cells are copied as written, so they use the same syntax as the prompt boxes. Ch
 a **Mode slots** folder of the character list; the cards are reused, and every other character is turned off.
 Applying a mode clears the active prompt preset (so the preset is not overwritten). **Apply again** re-reads the
 sheet after you edit it. The bar is hidden while no workbook has a modes sheet.
+
+## Doujin panels: the `panels` sheet
+
+Each doujin is its own workbook in the folder, with a sheet named **panels**. Its rows are the panels in reading
+order and use the modes columns (`main`, `main_neg`, `char_N`, `char_N_neg`, `char_N_pos`, `size`, `extends`,
+`set`, `hidden`, `note`); column A is the panel's name. A hidden row (`hidden` = yes) can hold what every panel
+shares, and a panel can `extends` the previous one so only what changes is written again.
+
+The **doujin bar** under the mode bar (shown while a workbook has a panels sheet):
+
+- the doujin picker (one entry per workbook with a panels sheet, named after the file);
+- previous / next and _N / total_, which opens the list of panels; going to a panel fills the prompt panel
+  from its row, like applying a mode;
+- while a panel is active, every image is tagged with it and saved, even with auto-save off, into
+  `<scene folder>/doujin - <doujin>/<NNN panel>/`; the bar shows that panel's images, newest first; click one
+  to view it, the star marks the ones to keep;
+- **export** copies every panel's starred images (or its newest image when none is starred) into a folder, in
+  panel order: `001 p01-1.png`, `002 p01-2.png`, `002 p01-2_2.png` …;
+- **×** stops working on panels (applying a mode does this too); **▶** starts again at the last panel.
+
+Pins are kept per doujin while panels are active.
 
 ## Style layer
 

@@ -127,14 +127,18 @@ const MODES = sheet('modes', [
   ['base', '$k = random(a, b)\n2girls, ${k}', 'bad', 'girl one', 'girl two', '', '', 'yes', ''],
   ['scene', '', '', '', '', 'base', '', '', 'all'],
   ['scene b', '', '', '', '-', 'scene', '$k := b', '', ''],
-  ['solo', '1girl', '', '', '-', 'base', '', '', '']
+  ['solo', '1girl', '', '', '-', 'base', '', '', ''],
+  ['scene c', '', '', '', '', 'scene b', '$k := c\n$extra := x', '', '']
 ])
 
 describe('modes: extends / set / hidden', () => {
   const sheets = createSpreadsheetSource([MODES])
   const modes = readModes(sheets)
   it('inherits empty cells, clears "-" cells, adds set lines and hides bases', () => {
-    expect(modes.map((m) => m.name)).toEqual(['scene', 'scene b', 'solo'])
+    expect(modes.map((m) => m.name)).toEqual(['scene', 'scene b', 'solo', 'scene c'])
+    // set lines are inherited; the child's line for a name replaces the parent's
+    expect(modes[3].prompt.split('\n').slice(0, 2)).toEqual(['$k := c', '$extra := x'])
+    expect(modes[3].characters.map((c) => c.prompt)).toEqual(['girl one'])
     const scene = modes[0]
     expect(scene.prompt).toBe('$k = random(a, b)\n2girls, ${k}')
     expect(scene.negativePrompt).toBe('bad')

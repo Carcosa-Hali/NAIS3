@@ -46,7 +46,8 @@ import {
 } from './fragments/repo'
 import { resetSequentialCounters } from './fragments/processor'
 import { previewTexts, rollPreview } from './fragments/request'
-import { readModes } from './fragments/modes'
+import { readModes, readPanels } from './fragments/modes'
+import { exportPanels, panelDir, panelImages } from './images/panels'
 import { checkWorkbook } from './fragments/check'
 import { readControls, sheetColumnValues } from './fragments/controls'
 import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
@@ -160,7 +161,7 @@ import {
   sceneDir,
   scenesRoot
 } from './images/storage'
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { basename } from 'path'
 import sharp from './sharp'
 import { verifyToken } from './nai/client'
@@ -580,6 +581,30 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   // 모드: 워크북의 modes 시트 행 (프롬프트 패널의 모드 선택용). 매번 최신 파일을 읽는다
   handle('modes:list', async () => readModes(await refreshWorkbook()))
   handle('workbook:controls', async () => readControls(await refreshWorkbook()))
+  handle('panels:list', async () => readPanels(await refreshWorkbook()))
+  handle('panels:images', (target) => ({ items: panelImages(target) }))
+  handle('panels:openFolder', async (target) => {
+    const dir = panelDir(target)
+    mkdirSync(dir, { recursive: true })
+    await shell.openPath(dir)
+  })
+  handle('panels:export', async ({ doujin }) => {
+    const book = readPanels(await refreshWorkbook()).find((d) => d.doujin === doujin)
+    if (!book) return { count: 0 }
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: t('ui.panelsExportTitle'),
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return { count: 0, canceled: true }
+    return {
+      count: exportPanels(
+        doujin,
+        book.panels.map((p) => p.name),
+        result.filePaths[0]
+      )
+    }
+  })
   handle('workbook:columnValues', async ({ sheet }) =>
     sheetColumnValues(await refreshWorkbook(), sheet)
   )

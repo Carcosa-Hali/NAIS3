@@ -73,6 +73,8 @@ export interface GenerationRequest {
    * style text goes before the main prompt's first `Text:` block, so rendered text stays last.
    */
   style?: StyleLayer
+  /** Doujin panel the image is generated for: always saved, into that panel's folder. */
+  panel?: PanelTarget
   negativePrompt: string
   model: string
   width: number
@@ -486,6 +488,30 @@ export interface WorkbookCheckReport {
   modes: WorkbookCheckMode[]
 }
 
+/** The panels of one doujin (a `panels` sheet; the workbook file name is the doujin's name). */
+export interface DoujinPanels {
+  doujin: string
+  /** In reading order; a panel's number is its position + 1. */
+  panels: PromptMode[]
+}
+
+/** Which doujin panel an image is generated for (saved under <scene folder>/doujin - <doujin>/<NNN panel>/). */
+export interface PanelTarget {
+  doujin: string
+  /** 1-based position of the panel. */
+  index: number
+  name: string
+}
+
+/** An image generated for a doujin panel. */
+export interface PanelImage {
+  id: number
+  filePath: string
+  thumbnailUrl: string
+  seed: number | null
+  favorite: boolean
+}
+
 /** A variable pinned in the pin panel: sent with every generation as `$name := lock`. */
 export interface PinnedVariable {
   name: string
@@ -645,6 +671,13 @@ export interface IpcInvokeMap {
   'workbook:check': { req: { rolls: number }; res: WorkbookCheckReport }
   /** The workbook's `controls` sheet rows (controls panel labels, groups, filters). */
   'workbook:controls': { req: void; res: ControlRow[] }
+  /** Every doujin's panels (the `panels` sheets of the workbook folder). */
+  'panels:list': { req: void; res: DoujinPanels[] }
+  /** Images generated for one panel, newest first. */
+  'panels:images': { req: PanelTarget; res: { items: PanelImage[] } }
+  /** Copies every panel's favourites (or its newest image) into a chosen folder, in panel order. */
+  'panels:export': { req: { doujin: string }; res: { count: number; canceled?: boolean } }
+  'panels:openFolder': { req: PanelTarget; res: void }
   /** Distinct values per column of a sheet (controls panel filters). */
   'workbook:columnValues': { req: { sheet: string }; res: SheetColumnValues[] }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
@@ -922,6 +955,8 @@ export interface IpcEventMap {
   /** 씬에 새 이미지가 생성됨 (목록/상세 갱신). filePath로 카드 즉시 낙관적 갱신 */
   'scenes:changed': { sceneId: number; filePath: string }
   'scenes:reservationsChanged': Record<string, never>
+  /** An image was saved for a doujin panel. */
+  'panels:changed': PanelTarget
   /** 바이브 인코딩 완료 — 카드의 인코딩 표시 갱신용 */
   'vibes:encoded': Record<string, never>
   /** 자동 업데이트 상태 (GitHub release) */

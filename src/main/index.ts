@@ -29,6 +29,7 @@ import { showMigrationProgress, type MigrationProgress } from './migration-windo
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
 import { requestUsesV5Usage, resolveNaiAccountForGeneration } from './nai/account-router'
+import { panelFolderNames } from './images/panels'
 import { localPromptMetadata } from './nai/payload'
 import { prepareCharRefs, prepareVibes } from './refs/prepare'
 import { GenerationQueue } from './queue/generation-queue'
@@ -286,10 +287,12 @@ const startup = app.whenReady().then(async () => {
 
     const scene = request.sceneId ? getScene(request.sceneId) : null
     const localMetadata = localPromptMetadata(request)
+    // Doujin panel images are always saved, each panel in its own folder (like scenes).
+    const panelFolder = !scene && request.panel ? panelFolderNames(request.panel) : null
 
     // 자동저장 OFF: 메인 생성은 파일로 저장하지 않는다 — 원본은 메모리(최근 20장)에만,
     // 히스토리에는 썸네일 행으로 남는다 (NAIS2 방식). 씬 생성은 항상 씬 폴더에 저장.
-    const ephemeral = !scene && getSetting('auto_save') === '0'
+    const ephemeral = !scene && !panelFolder && getSetting('auto_save') === '0'
     const saved = ephemeral
       ? await saveEphemeralImage({
           png,
@@ -313,10 +316,14 @@ const startup = app.whenReady().then(async () => {
               : 't2i',
           sceneId: request.sceneId,
           format: imageFormat,
-          sceneName: scene?.name,
-          scenePresetName: scene ? (getPresetName(scene.presetId) ?? undefined) : undefined,
+          sceneName: scene?.name ?? panelFolder?.sceneName,
+          scenePresetName: scene
+            ? (getPresetName(scene.presetId) ?? undefined)
+            : panelFolder?.presetName,
           localMetadata
         })
+
+    if (panelFolder && request.panel) broadcast('panels:changed', { ...request.panel })
 
     // 씬 생성이면 해당 씬 갱신 알림 (목록 썸네일/개수, 상세 이미지 갱신용)
     if (request.sceneId)

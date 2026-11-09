@@ -11,7 +11,7 @@
  * Pure module (no Electron / fs).
  */
 
-import type { PromptMode } from '../../shared/types'
+import type { DoujinPanels, PromptMode } from '../../shared/types'
 import type { SpreadsheetSource } from './spreadsheet'
 
 export const MODES_SHEET = 'modes'
@@ -38,18 +38,80 @@ function isHidden(text: string): boolean {
 }
 
 /**
+ * The `set` lines of a row and of every row it extends, outermost first. A `$name = …` / `$name := …` line of a
+ * row replaces the same name's line from the rows it extends, so a child can change what its parent fixed.
+ */
+function setLines(
+  row: { fields: ReadonlyMap<string, string> },
+  byName: ReadonlyMap<string, { fields: ReadonlyMap<string, string> }>
+): string {
+  const chain: string[] = []
+  let current: typeof row | undefined = row
+  for (let depth = 0; current && depth <= MAX_EXTENDS_DEPTH; depth++) {
+    const own = (current.fields.get('set') ?? '').trim()
+    if (own && own !== CLEARED) chain.unshift(own)
+    const parent = (current.fields.get('extends') ?? '').trim().toLowerCase()
+    current = parent ? byName.get(parent) : undefined
+  }
+  const lines: string[] = []
+  const definedAt = new Map<string, number>()
+  for (const line of chain.join('\n').split('\n')) {
+    const name = /^\s*\$([\p{L}_][\p{L}\p{N}_]*)\s*:?=/u.exec(line)?.[1]?.toLowerCase()
+    if (name !== undefined && definedAt.has(name)) {
+      lines[definedAt.get(name)!] = line
+      continue
+    }
+    if (name !== undefined) definedAt.set(name, lines.length)
+    lines.push(line)
+  }
+  return lines.join('\n').trim()
+}
+
+/**
  * Every mode row of every `modes` sheet, in file and row order.
  *
  * - `extends`: the name of another mode on the same sheet. Every empty cell of this row takes that mode's value
  *   (chains are followed); a cell holding just `-` stays empty.
  * - `set`: lines added at the top of the main prompt, typically `$name := value` overrides of the inherited
- *   definitions.
+ *   definitions. Set lines are inherited too; a row's line for a name replaces its parent's line for it.
  * - `hidden`: 1 / yes keeps the row out of the mode list (a base that other modes extend).
  */
 export function readModes(sheets: SpreadsheetSource | null | undefined): PromptMode[] {
+  return readPromptRows(sheets, MODES_SHEET)
+}
+
+/** Name of the sheet that holds a doujin's panels (one workbook file per doujin). */
+export const PANELS_SHEET = 'panels'
+
+/**
+ * Doujin panels: every `panels` sheet, one per workbook file (the file name is the doujin's name). Rows use the
+ * modes columns (main, main_neg, char_N, char_N_neg, char_N_pos, size, extends, set, hidden, note); column A is
+ * the panel's name. Rows are the panels in reading order; a hidden row can hold what every panel extends.
+ */
+export function readPanels(sheets: SpreadsheetSource | null | undefined): DoujinPanels[] {
+  if (!sheets || sheets.unavailableReason !== undefined) return []
+  return sheets.sheetsNamed(PANELS_SHEET).map(({ qualified, file }) => ({
+    doujin: file ?? PANELS_SHEET,
+    panels: readPromptRows(sheets, qualified, true)
+  }))
+}
+
+function readPromptRows(
+  sheets: SpreadsheetSource | null | undefined,
+  sheetName: string,
+  exact = false
+): PromptMode[] {
   if (!sheets || sheets.unavailableReason !== undefined) return []
   const modes: PromptMode[] = []
-  for (const { qualified, file } of sheets.sheetsNamed(MODES_SHEET)) {
+  const targets = exact
+    ? [
+        {
+          qualified: sheetName,
+          file: sheetName.includes(':') ? sheetName.slice(0, sheetName.indexOf(':')) : undefined
+        }
+      ]
+    : sheets.sheetsNamed(sheetName)
+  for (const { qualified, file } of targets) {
     const rows = sheets.getRows(qualified, '*') ?? []
     const byName = new Map(rows.map((row) => [row.key.trim().toLowerCase(), row]))
     for (const row of rows) {
@@ -77,8 +139,7 @@ export function readModes(sheets: SpreadsheetSource | null | undefined): PromptM
         })
       }
       const dimensions = size(field('size'))
-      // `set` is the row's own (not inherited): it is what makes this mode differ from the one it extends.
-      const set = (row.fields.get('set') ?? '').trim()
+      const set = setLines(row, byName)
       const main = field('main')
       modes.push({
         id: file ? `${file}:${row.key}` : row.key,

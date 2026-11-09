@@ -878,6 +878,10 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel === 'modes:list') return []
   if (channel === 'workbook:check') return { missing: [], modes: [] }
   if (channel === 'workbook:controls' || channel === 'workbook:columnValues') return []
+  if (channel === 'panels:list') return []
+  if (channel === 'panels:images') return { items: [] }
+  if (channel === 'panels:export') return { count: 0, canceled: true }
+  if (channel === 'panels:openFolder') return undefined
   if (channel === 'settings:getSaveDir') return { dir: 'Browser downloads', isDefault: true }
   if (channel === 'settings:pickSaveDir') return { dir: null }
   if (channel === 'settings:resetSaveDir') return { dir: 'Browser downloads' }

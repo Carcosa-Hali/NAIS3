@@ -41,6 +41,7 @@ import { RefOverlay } from './ref-overlay'
 import { ResolutionPicker } from './resolution-picker'
 import { RollPreviewDialog } from './roll-preview-dialog'
 import { ModeBar } from './mode-bar'
+import { DoujinBar } from './doujin-bar'
 import { PinButton, PinChips } from './pin-panel'
 import { StyleLayerPanel } from './style-layer-panel'
 import { SOURCE_BANNER_HEIGHT, SourceBanner } from './source-banner'
@@ -297,6 +298,7 @@ export function PromptPanel(): React.JSX.Element {
         <PromptPresetBar />
         {/* Modes from the workbook's modes sheets, and the active pins */}
         <ModeBar />
+        <DoujinBar />
         <PinChips />
         <StyleLayerPanel />
         <div
