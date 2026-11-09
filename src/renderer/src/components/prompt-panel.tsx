@@ -31,6 +31,7 @@ import { useGenerationStore } from '../stores/generation-store'
 import { useLayoutStore } from '../stores/layout-store'
 import { useCharRefsStore, useVibesStore } from '../stores/refs-store'
 import { useScenesStore } from '../stores/scenes-store'
+import { useStyleStore } from '../stores/style-store'
 import { PromptEditor } from './prompt-editor'
 import { PromptPresetBar } from './prompt-preset-bar'
 import { CharacterOverlay } from './character-overlay'
@@ -41,6 +42,7 @@ import { ResolutionPicker } from './resolution-picker'
 import { RollPreviewDialog } from './roll-preview-dialog'
 import { ModeBar } from './mode-bar'
 import { PinButton, PinChips } from './pin-panel'
+import { StyleLayerPanel } from './style-layer-panel'
 import { SOURCE_BANNER_HEIGHT, SourceBanner } from './source-banner'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -142,9 +144,18 @@ export function PromptPanel(): React.JSX.Element {
     () => charItems.filter((c) => c.enabled && c.prompt.trim()),
     [charItems]
   )
+  // The style layer is counted as part of the main prompt / negative it is merged into.
+  const styleEnabled = useStyleStore((s) => s.enabled)
+  const stylePrompt = useStyleStore((s) => (s.enabled ? s.prompt : ''))
+  const styleNegative = useStyleStore((s) => (s.enabled ? s.negativePrompt : ''))
   useEffect(() => {
-    const posTexts = [request.prompt, ...enabledChars.map((c) => c.prompt)].filter((t) => t.trim())
-    const negTexts = [request.negativePrompt].filter((t) => t.trim())
+    const withStyle = (main: string, style: string): string =>
+      [main, style].filter((t) => t.trim()).join(', ')
+    const posTexts = [
+      withStyle(request.prompt, stylePrompt),
+      ...enabledChars.map((c) => c.prompt)
+    ].filter((t) => t.trim())
+    const negTexts = [withStyle(request.negativePrompt, styleNegative)].filter((t) => t.trim())
     if (posTexts.length === 0 && negTexts.length === 0) {
       const timer = setTimeout(() => setTokenTotals({ pos: null, neg: null }))
       return () => clearTimeout(timer)
@@ -171,7 +182,15 @@ export function PromptPanel(): React.JSX.Element {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [request.model, request.prompt, request.negativePrompt, enabledChars])
+  }, [
+    request.model,
+    request.prompt,
+    request.negativePrompt,
+    enabledChars,
+    styleEnabled,
+    stylePrompt,
+    styleNegative
+  ])
 
   const anlas = useMemo(
     () =>
@@ -279,6 +298,7 @@ export function PromptPanel(): React.JSX.Element {
         {/* Modes from the workbook's modes sheets, and the active pins */}
         <ModeBar />
         <PinChips />
+        <StyleLayerPanel />
         <div
           className={'flex min-h-0 flex-col gap-1 ' + (posCollapsed ? 'flex-none' : 'min-h-9')}
           style={

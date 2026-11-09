@@ -797,7 +797,7 @@ export const EN = {
   'ui.chooseMode': 'Choose a mode',
   'ui.applyModeConfirm': 'Apply mode "{0}"?',
   'ui.applyModeConfirmHint':
-    "The main prompt, negative and character prompts are replaced by the mode's cells.",
+    "The main prompt, negative and character prompts are replaced by the mode's cells. The style layer is kept.",
   'ui.modeCharactersValue': '{0} {0|character|characters}',
   'ui.reapplyMode': 'Apply again',
   'ui.reapplyModeHint': 'Re-read the modes sheet and apply the current mode again',
@@ -817,6 +817,16 @@ export const EN = {
   'ui.pinsNotInPrompt': 'Pinned, but not used by the current prompts:',
   'ui.searchValuesValue': 'Search {0} values…',
   'ui.noMatches': 'No matches',
+  'ui.styleLayer': 'Style layer',
+  'ui.styleLayerEmpty': 'empty — artist sets, composition tags …',
+  'ui.styleLayerHint':
+    'Added to the main prompt and negative of every image, before any Text: block. Modes and prompt presets never replace it.',
+  'ui.styleLayerOn': 'Style layer on',
+  'ui.styleLayerOff': 'Style layer off',
+  'ui.styleLayerPromptPlaceholder':
+    'Style tags added to the main prompt (fragments, <Sheet/Key> and ${...} work)',
+  'ui.styleLayerNegativePlaceholder': 'Style tags added to the negative',
+  'ui.styleLayerNegative': 'Style layer negative',
   'ui.pinCustomValue': 'Or pin a typed value / expression',
   'ui.chooseSaveFolder': 'Choose Save Folder',
   'ui.valueImagesDoneValueFailed': '{0} {0|image|images} done · {1} failed',

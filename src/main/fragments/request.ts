@@ -1,4 +1,4 @@
-import type { GenerationRequest } from '../../shared/types'
+import type { GenerationRequest, StyleLayer } from '../../shared/types'
 import { removeComments } from '../../shared/nai-presets'
 import type { RollPreviewResult, RollPick } from '../../shared/types'
 import { processWildcards, type FragmentEntry, type FragmentSource } from './processor'
@@ -21,6 +21,45 @@ export interface PreprocessOptions {
 }
 
 const PICK_TEXT_LIMIT = 160
+
+/** Start of a `Text:` block (rendered lettering), at the start of the text or after a comma / line break. */
+const TEXT_BLOCK = /(^|[,\n])[ \t]*Text:/
+
+/**
+ * Joins `extra` onto `main` with ", ". When `main` has a `Text:` block, `extra` goes right before it, so the
+ * block stays the last thing in the prompt (NovelAI letters everything after `Text:`).
+ */
+export function joinBeforeText(main: string, extra: string): string {
+  const addition = extra
+    .trim()
+    .replace(/^,+|,+$/g, '')
+    .trim()
+  if (!addition) return main
+  const match = TEXT_BLOCK.exec(main)
+  if (!match) {
+    const head = main.trim().replace(/,+$/, '').trim()
+    return head ? `${head}, ${addition}` : addition
+  }
+  const start = match.index + match[1].length
+  const before = main.slice(0, start).replace(/[\s,]+$/, '')
+  const block = main.slice(start).trimStart()
+  return before ? `${before}, ${addition}, ${block}` : `${addition}, ${block}`
+}
+
+/** Joins two negative texts with ", ". */
+function joinNegative(main: string, extra: string): string {
+  const addition = extra
+    .trim()
+    .replace(/^,+|,+$/g, '')
+    .trim()
+  if (!addition) return main
+  const head = main.trim().replace(/,+$/, '').trim()
+  return head ? `${head}, ${addition}` : addition
+}
+
+function hasStyle(style: StyleLayer | undefined): style is StyleLayer {
+  return !!style && (!!style.prompt.trim() || !!style.negativePrompt.trim())
+}
 
 /** Applies `fn` to every prompt text of a request, keeping the structure (and the merged prompt) intact. */
 function mapRequestTexts(
@@ -150,10 +189,26 @@ export function preprocessRequest(
   const fragments = composeFragmentSources(source, options.sheets, { strict: true })
   const pipeline = createPipeline(fragments, rng, true, false, undefined, request.pinnedVariables)
 
+  const style = hasStyle(request.style) ? request.style : undefined
   const collected = mapRequestTexts(request, pipeline.collect)
+  // The style layer is prompt text like any other: it can use fragments, sheets and variables.
+  const styleCollected = style
+    ? {
+        prompt: pipeline.collect(style.prompt),
+        negativePrompt: pipeline.collect(style.negativePrompt)
+      }
+    : undefined
   const variables = pipeline.roll()
   const finished = mapRequestTexts(collected, pipeline.finish)
   delete finished.pinnedVariables
+  delete finished.style
+  if (styleCollected) {
+    finished.prompt = joinBeforeText(finished.prompt, pipeline.finish(styleCollected.prompt))
+    finished.negativePrompt = joinNegative(
+      finished.negativePrompt,
+      pipeline.finish(styleCollected.negativePrompt)
+    )
+  }
   return variables.length > 0 ? { ...finished, rolledVariables: variables } : finished
 }
 
@@ -163,6 +218,8 @@ export interface RollPreviewInput {
   characters: { prompt: string; negativePrompt: string }[]
   /** Variables pinned in the pin panel. */
   pins?: { name: string; lock: string }[]
+  /** Style layer, merged into the main prompt and negative like at generation time. */
+  style?: StyleLayer
 }
 
 /**
@@ -188,14 +245,22 @@ export function rollPreview(
   try {
     const fragments = composeFragmentSources(source, sheets, { strict: true })
     const pipeline = createPipeline(fragments, rng, true, true, record, input.pins, true)
+    const style = hasStyle(input.style) ? input.style : { prompt: '', negativePrompt: '' }
     const texts = [
       input.prompt,
       input.negativePrompt,
-      ...input.characters.flatMap((c) => [c.prompt, c.negativePrompt])
+      ...input.characters.flatMap((c) => [c.prompt, c.negativePrompt]),
+      style.prompt,
+      style.negativePrompt
     ]
     const collected = texts.map(pipeline.collect)
     variables = pipeline.roll()
-    const [prompt, negativePrompt, ...rest] = collected.map(pipeline.finish)
+    const finished = collected.map(pipeline.finish)
+    const styleNegative = finished.pop() ?? ''
+    const stylePrompt = finished.pop() ?? ''
+    const [mainPrompt, mainNegative, ...rest] = finished
+    const prompt = joinBeforeText(mainPrompt, stylePrompt)
+    const negativePrompt = joinNegative(mainNegative, styleNegative)
     return {
       ok: true,
       prompt,

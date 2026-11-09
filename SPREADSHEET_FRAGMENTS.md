@@ -1,4 +1,4 @@
-# Spreadsheet fragments, rows, weights, shared variables, modes and pins
+# Spreadsheet fragments, rows, weights, shared variables, modes, style layer and pins
 
 Prompt features that work together. All of them are applied per generated image, in every prompt field
 (main prompt, main negative, each character prompt, each character negative).
@@ -249,6 +249,19 @@ cells are copied as written, so they use the same syntax as the prompt boxes. Ch
 a **Mode slots** folder of the character list; the cards are reused, and every other character is turned off.
 Applying a mode clears the active prompt preset (so the preset is not overwritten). **Apply again** re-reads the
 sheet after you edit it. The bar is hidden while no workbook has a modes sheet.
+
+## Style layer
+
+The **Style layer** bar under the mode bar holds a main-prompt text and a negative text that are added to every
+image (and to the roll preview and token counts), on top of whatever the prompt boxes hold. Applying a mode or a
+prompt preset replaces the prompt boxes but never the style layer, so artist sets, composition tags and similar
+can be swapped on top of any mode without putting them in every mode's cells. The switch turns the layer off
+without clearing it.
+
+- The style text is prompt text like any other: fragments, `<Sheet/Key>`, wildcards and `${...}` of the mode's
+  variables all work, and a `$name := ...` line in it fixes a variable of the mode.
+- In the main prompt the style text goes **right before the first `Text:` block**, so rendered text stays the
+  last thing in the prompt. Without a `Text:` block it is added at the end. In the negative it is added at the end.
 
 ## Pins
 

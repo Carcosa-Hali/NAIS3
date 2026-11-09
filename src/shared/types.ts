@@ -54,6 +54,11 @@ export interface CharRefItem {
   folderId: number | null
 }
 
+export interface StyleLayer {
+  prompt: string
+  negativePrompt: string
+}
+
 export interface GenerationRequest {
   prompt: string
   /** Optional NAIS2-style split prompt parts. prompt is still the merged send text. */
@@ -62,6 +67,12 @@ export interface GenerationRequest {
   rolledVariables?: RolledVariable[]
   /** Variables pinned in the pin panel; they win over every definition of the same name. Not sent to NovelAI. */
   pinnedVariables?: { name: string; lock: string }[]
+  /**
+   * Style layer: text added to the main prompt and the main negative at generation time, kept apart from the
+   * prompt boxes so applying a mode or a preset does not replace it. Merged (and removed) by preprocessing; the
+   * style text goes before the main prompt's first `Text:` block, so rendered text stays last.
+   */
+  style?: StyleLayer
   negativePrompt: string
   model: string
   width: number
@@ -603,6 +614,7 @@ export interface IpcInvokeMap {
       negativePrompt: string
       characters: { prompt: string; negativePrompt: string }[]
       pins?: { name: string; lock: string }[]
+      style?: StyleLayer
     }
     res: RollPreviewResult
   }

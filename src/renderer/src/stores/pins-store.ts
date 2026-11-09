@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { PinnedVariable, RollPreviewResult } from '@shared/types'
 import { enabledCharacters } from './characters-store'
+import { styleForRequest } from './style-store'
 
 /**
  * Pinned prompt variables (pin panel). A pin is sent with every generation and roll preview as
@@ -70,7 +71,8 @@ export const usePinsStore = create<PinsState>((set, get) => {
             prompt: c.prompt,
             negativePrompt: c.negativePrompt
           })),
-          pins: pinsForRequest()
+          pins: pinsForRequest(),
+          style: styleForRequest()
         })
         set({ lastRoll })
       } catch (error) {

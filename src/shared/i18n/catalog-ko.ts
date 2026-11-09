@@ -781,7 +781,7 @@ export const KO = {
   'ui.chooseMode': '모드 선택',
   'ui.applyModeConfirm': '모드 "{0}"을(를) 적용할까요?',
   'ui.applyModeConfirmHint':
-    '메인 프롬프트, 네거티브, 캐릭터 프롬프트가 모드의 셀 내용으로 바뀝니다.',
+    '메인 프롬프트, 네거티브, 캐릭터 프롬프트가 모드의 셀 내용으로 바뀝니다. 스타일 레이어는 유지됩니다.',
   'ui.modeCharactersValue': '캐릭터 {0}',
   'ui.reapplyMode': '다시 적용',
   'ui.reapplyModeHint': 'modes 시트를 다시 읽고 현재 모드를 다시 적용합니다',
@@ -801,6 +801,16 @@ export const KO = {
   'ui.pinsNotInPrompt': '고정되었지만 현재 프롬프트에서 쓰이지 않음:',
   'ui.searchValuesValue': '값 {0}개 검색…',
   'ui.noMatches': '일치하는 항목 없음',
+  'ui.styleLayer': '스타일 레이어',
+  'ui.styleLayerEmpty': '비어 있음 — 작가 세트, 구도 태그 …',
+  'ui.styleLayerHint':
+    '모든 이미지의 메인 프롬프트와 네거티브에 추가됩니다 (Text: 블록 앞). 모드와 프롬프트 프리셋이 덮어쓰지 않습니다.',
+  'ui.styleLayerOn': '스타일 레이어 켜짐',
+  'ui.styleLayerOff': '스타일 레이어 꺼짐',
+  'ui.styleLayerPromptPlaceholder':
+    '메인 프롬프트에 추가할 스타일 태그 (조각, <시트/키>, ${...} 사용 가능)',
+  'ui.styleLayerNegativePlaceholder': '네거티브에 추가할 스타일 태그',
+  'ui.styleLayerNegative': '스타일 레이어 네거티브',
   'ui.pinCustomValue': '또는 직접 입력한 값/식으로 고정',
   'ui.chooseSaveFolder': '저장 폴더 선택',
   'ui.valueImagesDoneValueFailed': '{0}장 완료 · {1}장 실패',

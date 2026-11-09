@@ -10,6 +10,7 @@ import { queueDoneAlert } from '../lib/completion-alert'
 import { t } from '../lib/i18n'
 import { enabledCharacters, randomCharacterCandidates } from './characters-store'
 import { pinsForRequest } from './pins-store'
+import { styleForRequest } from './style-store'
 import { useVibesStore } from './refs-store'
 import { toast } from './toast-store'
 
@@ -231,10 +232,12 @@ export const useGenerationStore = create<GenerationState>((set, get) => ({
     }))
     const src = get().source
     const pinnedVariables = pinsForRequest()
+    const style = styleForRequest()
     const finalRequest = {
       ...baseRequest,
       characterPrompts,
       ...(pinnedVariables.length > 0 ? { pinnedVariables } : {}),
+      ...(style ? { style } : {}),
       source: src
         ? {
             imageBase64: src.imageBase64,
