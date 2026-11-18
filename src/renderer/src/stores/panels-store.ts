@@ -66,7 +66,8 @@ export const usePanelsStore = create<PanelsState>((set, get) => {
     load: async () => {
       set({ loading: true })
       try {
-        const books = await window.nais.invoke('panels:list', undefined)
+        const listed = await window.nais.invoke('panels:list', undefined)
+        const books = Array.isArray(listed) ? listed : []
         let { doujin } = get()
         if (!books.some((b) => b.doujin === doujin)) doujin = books[0]?.doujin ?? null
         set({ books, loaded: true, doujin })
@@ -115,7 +116,8 @@ export const usePanelsStore = create<PanelsState>((set, get) => {
       const target = panelForRequest()
       if (!target) return set({ images: [] })
       try {
-        const { items } = await window.nais.invoke('panels:images', target)
+        const result = await window.nais.invoke('panels:images', target)
+        const items = Array.isArray(result?.items) ? result.items : []
         // a newer panel may have been chosen meanwhile
         const now = panelForRequest()
         if (now && now.doujin === target.doujin && now.index === target.index)

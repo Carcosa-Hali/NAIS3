@@ -89,7 +89,10 @@ function columnValues(sheet: string): Promise<SheetColumnValues[]> {
   const key = sheet.toLowerCase()
   let pending = columnCache.get(key)
   if (!pending) {
-    pending = window.nais.invoke('workbook:columnValues', { sheet }).catch(() => [])
+    pending = window.nais
+      .invoke('workbook:columnValues', { sheet })
+      .then((columns) => (Array.isArray(columns) ? columns : []))
+      .catch(() => [])
     columnCache.set(key, pending)
   }
   return pending
@@ -119,7 +122,7 @@ function PinPanel(): React.JSX.Element {
     void roll()
     void window.nais
       .invoke('workbook:controls', undefined)
-      .then(setControls)
+      .then((rows) => setControls(Array.isArray(rows) ? rows : []))
       .catch(() => setControls([]))
   }, [roll])
 

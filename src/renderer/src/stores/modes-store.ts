@@ -60,7 +60,9 @@ export const useModesStore = create<ModesState>((set) => ({
   load: async () => {
     set({ loading: true })
     try {
-      set({ modes: await window.nais.invoke('modes:list', undefined), loaded: true })
+      const modes = await window.nais.invoke('modes:list', undefined)
+      // anything but a list (an older main process, a test double) means no modes
+      set({ modes: Array.isArray(modes) ? modes : [], loaded: true })
     } finally {
       set({ loading: false })
     }

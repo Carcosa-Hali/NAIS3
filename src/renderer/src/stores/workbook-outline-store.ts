@@ -25,7 +25,12 @@ export const useWorkbookOutlineStore = create<OutlineState>((set, get) => ({
     if (Date.now() - fetchedAt < MAX_AGE_MS) return Promise.resolve()
     const next = window.nais
       .invoke('workbook:outline', undefined)
-      .then((outline) => set({ outline, fetchedAt: Date.now() }))
+      .then((outline) =>
+        set({
+          outline: Array.isArray(outline?.sheets) ? outline : { sheets: [] },
+          fetchedAt: Date.now()
+        })
+      )
       .catch(() => set({ fetchedAt: Date.now() }))
       .finally(() => set({ pending: null }))
     set({ pending: next })
