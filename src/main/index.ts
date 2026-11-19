@@ -8,6 +8,7 @@ import { closeDb, initDb, migrateInWorker } from './db'
 import migrationWorkerPath from './db/migrate.worker?modulePath'
 import { getSetting, markOnboardingPending } from './db/settings'
 import { preprocessRequest } from './fragments/request'
+import { refreshWorkbook } from './fragments/workbook'
 import { effectiveSteps, inpaintingModelFor, modelCapabilities } from '../shared/nai-models'
 import { snapNaiResolution } from '../shared/nai-resolution'
 import { fragmentSource } from './fragments/repo'
@@ -28,6 +29,7 @@ import { showMigrationProgress, type MigrationProgress } from './migration-windo
 import { watchZoomShortcuts } from './zoom'
 import { logBalance } from './nai/anlas-log'
 import { fetchAnlasBalance, generateImageStream, generateImageZip } from './nai/client'
+import { panelFolderNames } from './images/panels'
 import {
   commitNaiAccountSelection,
   previewNaiAccountForGeneration,
@@ -220,7 +222,10 @@ const startup = app.whenReady().then(async () => {
     // 배치 항목마다 여기서 치환 — 매 장 다른 와일드카드 결과가 나온다.
     // 주석 제거가 반드시 먼저 — 주석 줄이 조각을 소모하거나(순차 카운터),
     // 와일드카드 처리의 재조립이 개행을 지워 주석 범위가 전체로 번지는 것 방지 (NAIS2와 동일 순서)
-    let request = preprocessRequest(rawRequest, fragmentSource())
+    // 외부 워크북(<시트/키>)은 장마다 최신 파일을 반영 (수정 시각이 바뀐 경우에만 다시 읽음)
+    let request = preprocessRequest(rawRequest, fragmentSource(), {
+      sheets: await refreshWorkbook()
+    })
 
     // 바이브/캐릭레퍼 준비 — 요청이 id를 지정하면(출연 예약) 그것으로, 아니면 DB enabled 항목
     // (바이브는 필요 시 인코딩 — 2 Anlas, 캐시됨)
@@ -301,11 +306,13 @@ const startup = app.whenReady().then(async () => {
     const scene = rawRequest.sceneId ? getScene(rawRequest.sceneId) : null
     const sceneId = scene ? scene.id : undefined
     const localMetadata = localPromptMetadata(request)
+    // Story panel images are always saved, each panel in its own folder (like scenes).
+    const panelFolder = !scene && request.panel ? panelFolderNames(request.panel) : null
 
     // 자동저장 OFF: 메인 생성은 파일로 저장하지 않는다 — 원본은 메모리(최근 20장)에만,
     // 히스토리에는 썸네일 행으로 남는다 (NAIS2 방식). 씬 생성은 항상 씬 폴더에 저장.
     // A scene job whose scene was deleted still keeps its paid original on disk.
-    const ephemeral = !sceneJob && getSetting('auto_save') === '0'
+    const ephemeral = !sceneJob && !panelFolder && getSetting('auto_save') === '0'
     const saved = ephemeral
       ? await saveEphemeralImage({
           png,
@@ -324,10 +331,14 @@ const startup = app.whenReady().then(async () => {
           sceneId,
           resolveSceneId: () => rawRequest.sceneId,
           format: imageFormat,
-          sceneName: scene?.name,
-          scenePresetName: scene ? (getPresetName(scene.presetId) ?? undefined) : undefined,
+          sceneName: scene?.name ?? panelFolder?.sceneName,
+          scenePresetName: scene
+            ? (getPresetName(scene.presetId) ?? undefined)
+            : panelFolder?.presetName,
           localMetadata
         })
+
+    if (panelFolder && request.panel) broadcast('panels:changed', { ...request.panel })
 
     // 씬 생성이면 해당 씬 갱신 알림 (목록 썸네일/개수, 상세 이미지 갱신용)
     if (saved.sceneId)

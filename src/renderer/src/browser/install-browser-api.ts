@@ -1,7 +1,6 @@
 import type { NaisApi } from '../../../preload/index'
-import { preprocessRequest } from '../../../main/fragments/request'
-import { processWildcards, resetSequentialCounters } from '../../../main/fragments/processor'
-import { removeComments } from '@shared/nai-presets'
+import { preprocessRequest, previewTexts, rollPreview } from '../../../main/fragments/request'
+import { resetSequentialCounters } from '../../../main/fragments/processor'
 import { modelCapabilities } from '@shared/nai-models'
 import { applyRandomCharacterPrompt } from '@shared/random-character'
 import { UPSCALE_MODEL, UPSCALE_SCALE } from '../../../main/nai/upscale-request'
@@ -729,13 +728,15 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel.startsWith('vibes:') || channel.startsWith('crefs:'))
     return refsDispatch(channel, request)
   if (channel === 'tags:search') return gateway('tags', request)
+  if (channel === 'fragments:rollPreview') {
+    const source = browserFragmentSource(await readBrowserState())
+    return rollPreview(request as unknown as Parameters<typeof rollPreview>[0], source)
+  }
   if (channel === 'tokens:count') {
     const source = browserFragmentSource(await readBrowserState())
     return gateway('tokens', {
       ...request,
-      texts: (request.texts as string[]).map((text) =>
-        processWildcards(removeComments(text), source, () => 0, true)
-      )
+      texts: previewTexts(request.texts as string[], source)
     })
   }
 
@@ -885,6 +886,21 @@ async function dispatch(channel: string, rawRequest: unknown): Promise<unknown> 
   if (channel.startsWith('promptPresets:')) return promptPresetsDispatch(channel, request)
   if (channel.startsWith('library:')) return libraryDispatch(channel, request)
 
+  // 외부 워크북(.xlsx)은 파일 시스템이 필요해 Electron 전용
+  if (channel.startsWith('fragmentWorkbook:')) return { path: null, sheetCount: 0, error: null }
+  if (channel === 'modes:list') return []
+  if (channel === 'workbook:check') return { missing: [], modes: [] }
+  if (
+    channel === 'workbook:controls' ||
+    channel === 'workbook:columnValues' ||
+    channel === 'workbook:controlChoices'
+  )
+    return []
+  if (channel === 'workbook:outline') return { sheets: [] }
+  if (channel === 'panels:list') return []
+  if (channel === 'panels:images') return { items: [] }
+  if (channel === 'panels:export') return { count: 0, canceled: true }
+  if (channel === 'panels:openFolder') return undefined
   if (channel === 'settings:getSaveDir') return { dir: 'Browser downloads', isDefault: true }
   if (channel === 'settings:pickSaveDir') return { dir: null }
   if (channel === 'settings:resetSaveDir') return { dir: 'Browser downloads' }

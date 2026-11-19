@@ -4,6 +4,7 @@ import type { ImageMetadata } from '@shared/types'
 import { isSplitMeta, useMetadataStore } from '../stores/metadata-store'
 import { cn } from '../lib/utils'
 import { useT } from '../lib/i18n'
+import { RolledVariablesList } from './rolled-variables'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog'
 
@@ -174,6 +175,7 @@ export function MetadataDialog(): React.JSX.Element {
                 sel={sel}
                 toggle={toggle}
               />
+              {meta.variables && <RolledVariablesList variables={meta.variables} />}
               {meta.characterPrompts && meta.characterPrompts.length > 0 && (
                 <div>
                   <CheckLabel

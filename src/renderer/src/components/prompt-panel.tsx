@@ -1,6 +1,7 @@
 import {
   ChevronDown,
   ChevronUp,
+  Dices,
   ImageUp,
   Info,
   Layers,
@@ -35,8 +36,10 @@ import { useCharactersStore } from '../stores/characters-store'
 import { useFragmentsStore } from '../stores/fragments-store'
 import { useGenerationStore } from '../stores/generation-store'
 import { useLayoutStore } from '../stores/layout-store'
+import { useModesStore } from '../stores/modes-store'
 import { useCharRefsStore, useVibesStore } from '../stores/refs-store'
 import { useScenesStore } from '../stores/scenes-store'
+import { useStyleStore } from '../stores/style-store'
 import { PromptEditor } from './prompt-editor'
 import { PromptPresetBar } from './prompt-preset-bar'
 import { CharacterOverlay } from './character-overlay'
@@ -44,6 +47,11 @@ import { FragmentOverlay } from './fragment-overlay'
 import { ParamsDialog } from './params-dialog'
 import { RefOverlay } from './ref-overlay'
 import { ResolutionPicker } from './resolution-picker'
+import { RollPreviewDialog } from './roll-preview-dialog'
+import { ModeBar } from './mode-bar'
+import { StoryBar } from './story-bar'
+import { ControlsPanel } from './controls-panel'
+import { StyleLayerPanel } from './style-layer-panel'
 import { SOURCE_BANNER_HEIGHT, SourceBanner } from './source-banner'
 import { Button } from './ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -82,6 +90,7 @@ export function PromptPanel(): React.JSX.Element {
     ? snapNaiResolution(source.width, source.height)
     : { width: request.width, height: request.height }
   const [paramsOpen, setParamsOpen] = useState(false)
+  const [rollPreviewOpen, setRollPreviewOpen] = useState(false)
   const quickGenerationControlsEnabled = useLayoutStore((s) => s.quickGenerationControlsEnabled)
 
   useEffect(() => {
@@ -96,6 +105,19 @@ export function PromptPanel(): React.JSX.Element {
   const sceneReserved = useScenesStore((s) => s.reservedTotal)
   const generateReserved = useScenesStore((s) => s.generateReserved)
   const isScene = centerMode === 'scene'
+  // While a mode is applied, its prompt and negative (the template the controls drive) sit in a closed drawer
+  // and the controls panel takes the space. The drawer's state is remembered.
+  const modeActive = useModesStore((s) => s.activeId !== null)
+  const [templateOpen, setTemplateOpen] = useState(
+    () => localStorage.getItem(TEMPLATE_OPEN_KEY) === '1'
+  )
+  const toggleTemplate = (): void => {
+    setTemplateOpen((open) => {
+      localStorage.setItem(TEMPLATE_OPEN_KEY, open ? '0' : '1')
+      return !open
+    })
+  }
+  const showPrompts = !modeActive || templateOpen
   // 프롬프트/네거티브 개별 접기 — 하나를 접으면 다른 하나가 넓어짐
   const [posCollapsed, setPosCollapsed] = useState(false)
   const [negCollapsed, setNegCollapsed] = useState(false)
@@ -144,9 +166,18 @@ export function PromptPanel(): React.JSX.Element {
     () => charItems.filter((c) => c.enabled && c.prompt.trim()),
     [charItems]
   )
+  // The style layer is counted as part of the main prompt / negative it is merged into.
+  const styleEnabled = useStyleStore((s) => s.enabled)
+  const stylePrompt = useStyleStore((s) => (s.enabled ? s.prompt : ''))
+  const styleNegative = useStyleStore((s) => (s.enabled ? s.negativePrompt : ''))
   useEffect(() => {
-    const posTexts = [request.prompt, ...enabledChars.map((c) => c.prompt)].filter((t) => t.trim())
-    const negTexts = [request.negativePrompt].filter((t) => t.trim())
+    const withStyle = (main: string, style: string): string =>
+      [main, style].filter((t) => t.trim()).join(', ')
+    const posTexts = [
+      withStyle(request.prompt, stylePrompt),
+      ...enabledChars.map((c) => c.prompt)
+    ].filter((t) => t.trim())
+    const negTexts = [withStyle(request.negativePrompt, styleNegative)].filter((t) => t.trim())
     if (posTexts.length === 0 && negTexts.length === 0) {
       const timer = setTimeout(() => setTokenTotals({ pos: null, neg: null }))
       return () => clearTimeout(timer)
@@ -173,7 +204,15 @@ export function PromptPanel(): React.JSX.Element {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [request.model, request.prompt, request.negativePrompt, enabledChars])
+  }, [
+    request.model,
+    request.prompt,
+    request.negativePrompt,
+    enabledChars,
+    styleEnabled,
+    stylePrompt,
+    styleNegative
+  ])
 
   const estimateInput = useMemo(
     (): AnlasEstimateInput => ({
@@ -288,87 +327,127 @@ export function PromptPanel(): React.JSX.Element {
         </AnimatePresence>
         {/* 프롬프트 프리셋 — 포지티브 프롬프트 위 */}
         <PromptPresetBar />
-        <div
-          className={'flex min-h-0 flex-col gap-1 ' + (posCollapsed ? 'flex-none' : 'min-h-9')}
-          style={
-            bothOpen
-              ? { flexGrow: posRatio, flexBasis: 0 }
-              : !posCollapsed
-                ? { flexGrow: 1 }
-                : undefined
-          }
-        >
+        {/* Modes from the workbook's modes sheets, and the active pins */}
+        <ModeBar />
+        <StoryBar />
+        <StyleLayerPanel />
+        <ControlsPanel fill={!showPrompts} />
+        {modeActive && (
           <CollapseHeader
-            label="ui.prompt"
-            collapsed={posCollapsed}
-            onToggle={() => setPosCollapsed((v) => !v)}
+            label="ui.modeTemplate"
+            collapsed={!templateOpen}
+            onToggle={toggleTemplate}
             action={
-              <div className="flex items-center gap-1">
-                {promptSplitEnabled && <TokenBadge tokens={tokenTotals.pos} limit={tokenLimit} />}
-                <SyntaxHelp />
-              </div>
+              !templateOpen ? (
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className="truncate pl-2 text-[11px] font-normal text-faint">
+                    {t('ui.modeTemplateHint')}
+                  </span>
+                  <button
+                    className="grid size-5 shrink-0 place-items-center rounded text-faint transition-colors hover:text-ink"
+                    title={t('ui.rollPreview')}
+                    aria-label={t('ui.rollPreview')}
+                    onClick={() => setRollPreviewOpen(true)}
+                  >
+                    <Dices size={13} />
+                  </button>
+                </div>
+              ) : undefined
             }
           />
-          {!posCollapsed &&
-            (promptSplitEnabled ? (
-              <SplitPromptFields
-                parts={request.promptParts ?? { base: request.prompt, additional: '', detail: '' }}
-                onChange={patchPromptParts}
-              />
-            ) : (
-              <PromptEditor
-                className="min-h-0 flex-1"
-                value={request.prompt}
-                tokensOverride={tokenTotals.pos}
-                tokenLimit={tokenLimit}
-                placeholder={t('ui.value1girlTagAutocompleteFragment')}
-                onValueChange={(v) => patch({ prompt: v })}
-              />
-            ))}
-        </div>
-        {/* 세로 비율 조절 스플리터 (둘 다 펼쳐졌을 때만) */}
-        {bothOpen && (
-          <div
-            className="group -my-1 flex h-2 shrink-0 cursor-row-resize items-center justify-center"
-            onMouseDown={startPromptResize}
-          >
-            <div className="h-0.5 w-8 rounded-full bg-line transition-colors group-hover:bg-accent/50" />
-          </div>
         )}
-        <div
-          className={'flex min-h-0 flex-col gap-1 ' + (negCollapsed ? 'flex-none' : 'min-h-9')}
-          style={
-            bothOpen
-              ? { flexGrow: 1 - posRatio, flexBasis: 0 }
-              : !negCollapsed
-                ? { flexGrow: 1 }
-                : undefined
-          }
-        >
-          <CollapseHeader
-            label="ui.negative"
-            collapsed={negCollapsed}
-            onToggle={() => setNegCollapsed((v) => !v)}
-          />
-          {!negCollapsed && isMediumEffortModel(request.model) && (
-            // Medium effort는 사용자 UC를 보내지 않는다 (공지 권장: 프롬프트에 -3::hat:: 같은 음수 강조)
-            <p className="shrink-0 text-[11.5px] leading-snug text-faint">
-              {t('ui.negativeUnusedAtMediumEffort')}
-            </p>
-          )}
-          {!negCollapsed && (
-            <PromptEditor
-              negative
-              className="min-h-0 flex-1"
-              value={request.negativePrompt}
-              // Medium effort는 사용자 UC를 보내지 않으므로 토큰 수·한도 경고도 숨김
-              tokensOverride={isMediumEffortModel(request.model) ? null : tokenTotals.neg}
-              tokenLimit={tokenLimit}
-              placeholder={t('ui.appendedAfterTheUcPreset')}
-              onValueChange={(v) => patch({ negativePrompt: v })}
-            />
-          )}
-        </div>
+        {showPrompts && (
+          <>
+            <div
+              className={'flex min-h-0 flex-col gap-1 ' + (posCollapsed ? 'flex-none' : 'min-h-9')}
+              style={
+                bothOpen
+                  ? { flexGrow: posRatio, flexBasis: 0 }
+                  : !posCollapsed
+                    ? { flexGrow: 1 }
+                    : undefined
+              }
+            >
+              <CollapseHeader
+                label="ui.prompt"
+                collapsed={posCollapsed}
+                onToggle={() => setPosCollapsed((v) => !v)}
+                action={
+                  <div className="flex items-center gap-1">
+                    {promptSplitEnabled && <TokenBadge tokens={tokenTotals.pos} limit={tokenLimit} />}
+                    <button
+                      className="grid size-5 place-items-center rounded text-faint transition-colors hover:text-ink"
+                      title={t('ui.rollPreview')}
+                      onClick={() => setRollPreviewOpen(true)}
+                    >
+                      <Dices size={13} />
+                    </button>
+                    <SyntaxHelp />
+                  </div>
+                }
+              />
+              {!posCollapsed &&
+                (promptSplitEnabled ? (
+                  <SplitPromptFields
+                    parts={request.promptParts ?? { base: request.prompt, additional: '', detail: '' }}
+                    onChange={patchPromptParts}
+                  />
+                ) : (
+                  <PromptEditor
+                    className="min-h-0 flex-1"
+                    value={request.prompt}
+                    tokensOverride={tokenTotals.pos}
+                    tokenLimit={tokenLimit}
+                    placeholder={t('ui.value1girlTagAutocompleteFragment')}
+                    onValueChange={(v) => patch({ prompt: v })}
+                  />
+                ))}
+            </div>
+            {/* 세로 비율 조절 스플리터 (둘 다 펼쳐졌을 때만) */}
+            {bothOpen && (
+              <div
+                className="group -my-1 flex h-2 shrink-0 cursor-row-resize items-center justify-center"
+                onMouseDown={startPromptResize}
+              >
+                <div className="h-0.5 w-8 rounded-full bg-line transition-colors group-hover:bg-accent/50" />
+              </div>
+            )}
+            <div
+              className={'flex min-h-0 flex-col gap-1 ' + (negCollapsed ? 'flex-none' : 'min-h-9')}
+              style={
+                bothOpen
+                  ? { flexGrow: 1 - posRatio, flexBasis: 0 }
+                  : !negCollapsed
+                    ? { flexGrow: 1 }
+                    : undefined
+              }
+            >
+              <CollapseHeader
+                label="ui.negative"
+                collapsed={negCollapsed}
+                onToggle={() => setNegCollapsed((v) => !v)}
+              />
+              {!negCollapsed && isMediumEffortModel(request.model) && (
+                // Medium effort는 사용자 UC를 보내지 않는다 (공지 권장: 프롬프트에 -3::hat:: 같은 음수 강조)
+                <p className="shrink-0 text-[11.5px] leading-snug text-faint">
+                  {t('ui.negativeUnusedAtMediumEffort')}
+                </p>
+              )}
+              {!negCollapsed && (
+                <PromptEditor
+                  negative
+                  className="min-h-0 flex-1"
+                  value={request.negativePrompt}
+                  // Medium effort는 사용자 UC를 보내지 않으므로 토큰 수·한도 경고도 숨김
+                  tokensOverride={isMediumEffortModel(request.model) ? null : tokenTotals.neg}
+                  tokenLimit={tokenLimit}
+                  placeholder={t('ui.appendedAfterTheUcPreset')}
+                  onValueChange={(v) => patch({ negativePrompt: v })}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* 도구 행: 캐릭터 / 조각 / 바이브 / 레퍼런스 */}
@@ -493,6 +572,7 @@ export function PromptPanel(): React.JSX.Element {
       </div>
 
       <ParamsDialog open={paramsOpen} onOpenChange={setParamsOpen} />
+      <RollPreviewDialog open={rollPreviewOpen} onOpenChange={setRollPreviewOpen} />
     </aside>
   )
 }
@@ -606,6 +686,8 @@ const SPLIT_PARTS: { key: SplitPartKey; label: MessageId; placeholder: MessageId
 ]
 
 const SPLIT_COLLAPSED_KEY = 'prompt_split_collapsed'
+/** The mode template drawer (prompt + negative while a mode is applied) is open. */
+const TEMPLATE_OPEN_KEY = 'prompt_template_open'
 const SPLIT_SIZES_KEY = 'prompt_split_sizes'
 
 function loadSplitCollapsed(): Record<SplitPartKey, boolean> {

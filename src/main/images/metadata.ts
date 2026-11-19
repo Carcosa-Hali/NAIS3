@@ -114,6 +114,7 @@ interface Params {
 
 interface LocalParams {
   promptParts?: ImageMetadata['promptParts']
+  variables?: ImageMetadata['variables']
 }
 
 function parseLocalParams(text: Record<string, string>): LocalParams | undefined {
@@ -178,8 +179,23 @@ function normalize(
     // ucPreset·qualityToggle: 직접 필드 우선, 없으면 병합 문자열에서 역추적
     qualityToggle: params.qualityToggle ?? extra.prompt.endsWith(QUALITY_TAGS_SUFFIX),
     ucPreset: params.ucPreset ?? inferUcPreset(extra.uc),
-    characterPrompts: characterPrompts.length > 0 ? characterPrompts : undefined
+    characterPrompts: characterPrompts.length > 0 ? characterPrompts : undefined,
+    variables: validVariables(extra.local?.variables)
   }
+}
+
+/** Rolled prompt variables from the local metadata chunk (ignores anything malformed). */
+function validVariables(value: unknown): ImageMetadata['variables'] {
+  if (!Array.isArray(value)) return undefined
+  const variables = value.filter(
+    (v): v is NonNullable<ImageMetadata['variables']>[number] =>
+      typeof v === 'object' &&
+      v !== null &&
+      typeof v.name === 'string' &&
+      typeof v.value === 'string' &&
+      typeof v.lock === 'string'
+  )
+  return variables.length > 0 ? variables : undefined
 }
 
 /** 우리 payload_json({input, model, parameters}) → 정규화 메타 */

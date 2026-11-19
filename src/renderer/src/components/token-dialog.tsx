@@ -25,7 +25,7 @@ import {
 } from '@shared/anlas'
 import { normalizeDailyAnlasCap } from '@shared/anlas-guard'
 import { isLang, LANGUAGES, SUPPORTED_LANGUAGES, type MessageId } from '@shared/i18n'
-import type { NaiAccountInfo, NaiTokenStoreLockReason } from '@shared/types'
+import type { FragmentWorkbookInfo, NaiAccountInfo, NaiTokenStoreLockReason } from '@shared/types'
 import discordSvg from '../assets/discord.svg'
 import nais3Logo from '../assets/nais3-logo.svg'
 import { importBackup } from '../lib/backup-import'
@@ -601,6 +601,73 @@ function SaveDirRow({
   )
 }
 
+/** 외부 조각 워크북(.xlsx) 한 줄 — 파일 표시 + 선택 + 해제 + 읽기 상태 */
+function WorkbookRow(): React.JSX.Element {
+  const t = useT()
+  const [info, setInfo] = useState<FragmentWorkbookInfo | null>(null)
+  useEffect(() => {
+    void window.nais.invoke('fragmentWorkbook:get', undefined).then(setInfo)
+  }, [])
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div>
+        <p className="text-[13px] text-ink">{t('ui.fragmentWorkbook')}</p>
+        <p className="text-[11.5px] text-faint">{t('ui.fragmentWorkbookHint')}</p>
+      </div>
+      <div className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
+        <div
+          className="w-0 min-w-0 flex-1 truncate rounded-md border border-line bg-surface-2/60 px-3 py-2 font-mono text-[12px] text-muted"
+          title={info?.path ?? ''}
+        >
+          {info?.path ?? t('ui.fragmentWorkbookNone')}
+        </div>
+        <Button
+          variant="default"
+          className="gap-1"
+          onClick={async () =>
+            setInfo(await window.nais.invoke('fragmentWorkbook:pick', undefined))
+          }
+        >
+          <FolderOpen size={14} /> {t('ui.chooseFile')}
+        </Button>
+        <Button
+          variant="default"
+          className="gap-1"
+          title={t('ui.fragmentWorkbookFolderHint')}
+          onClick={async () =>
+            setInfo(await window.nais.invoke('fragmentWorkbook:pickFolder', undefined))
+          }
+        >
+          <FolderOpen size={14} /> {t('ui.chooseFolder')}
+        </Button>
+        {info?.path && (
+          <Button
+            variant="ghost"
+            title={t('ui.removeFragmentWorkbook')}
+            onClick={async () =>
+              setInfo(await window.nais.invoke('fragmentWorkbook:clear', undefined))
+            }
+          >
+            <Trash2 size={14} />
+          </Button>
+        )}
+      </div>
+      {info?.path &&
+        (info.error ? (
+          <p className="whitespace-pre-wrap text-[11.5px] text-danger">
+            {t('ui.fragmentWorkbookError', info.error)}
+          </p>
+        ) : (
+          <p className="text-[11.5px] text-faint">
+            {info.folder
+              ? t('ui.fragmentWorkbookFolderSheets', info.fileCount ?? 0, info.sheetCount)
+              : t('ui.fragmentWorkbookSheets', info.sheetCount)}
+          </p>
+        ))}
+    </div>
+  )
+}
+
 function StorageSection(): React.JSX.Element {
   const t = useT()
   const [autoSave, setAutoSave] = useBoolSetting('auto_save', true)
@@ -659,6 +726,7 @@ function StorageSection(): React.JSX.Element {
         label={t('ui.sceneSaveFolder')}
         hint={t('ui.organizedUnderThisFolderByPresetSceneName')}
       />
+      {window.nais.runtime !== 'browser' && <WorkbookRow />}
 
       <div className="mt-1 border-t border-line pt-3">
         <p className="text-[13px] text-ink">{t('ui.dataBackup')}</p>

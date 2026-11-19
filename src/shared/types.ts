@@ -54,10 +54,27 @@ export interface CharRefItem {
   folderId: number | null
 }
 
+export interface StyleLayer {
+  prompt: string
+  negativePrompt: string
+}
+
 export interface GenerationRequest {
   prompt: string
   /** Optional NAIS2-style split prompt parts. prompt is still the merged send text. */
   promptParts?: PromptParts
+  /** Prompt variables rolled for this image (set by fragment preprocessing; stored in the image metadata). */
+  rolledVariables?: RolledVariable[]
+  /** Variables pinned in the pin panel; they win over every definition of the same name. Not sent to NovelAI. */
+  pinnedVariables?: { name: string; lock: string }[]
+  /**
+   * Style layer: text added to the main prompt and the main negative at generation time, kept apart from the
+   * prompt boxes so applying a mode or a preset does not replace it. Merged (and removed) by preprocessing; the
+   * style text goes before the main prompt's first `Text:` block, so rendered text stays last.
+   */
+  style?: StyleLayer
+  /** Story panel the image is generated for: always saved, into that panel's folder. */
+  panel?: PanelTarget
   negativePrompt: string
   model: string
   width: number
@@ -300,6 +317,8 @@ export interface ImageMetadata {
   qualityToggle?: boolean
   ucPreset?: number
   characterPrompts?: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
+  /** Prompt variables rolled for this image (NAIS3 fork metadata) */
+  variables?: RolledVariable[]
 }
 
 /** 씬 프리셋 (씬들의 그룹) */
@@ -410,7 +429,186 @@ export interface LibraryStack {
   coverUrl: string
 }
 
+/** A prompt variable as rolled for one image. */
+export interface RolledVariable {
+  name: string
+  value: string
+  /** Expression that reproduces this exact value when written as `$name := <lock>`. */
+  lock: string
+  /** The value came from a pin (pin panel), not from a roll. */
+  pinned?: boolean
+  /** Values the variable could have taken (roll preview only; for the pin panel's value list). */
+  options?: {
+    label: string
+    lock: string
+  }[] /** How the value was rolled: random(), row(), deal(), shuffle()/list(), chance(), calc() or a plain value. */
+  kind?: 'random' | 'row' | 'deal' | 'list' | 'chance' | 'calc' | 'value'
+  /** row() / deal(): the sheet the picked row is on (as the reference names it). */
+  sheet?: string
+}
+
+/** A row of a `modes` sheet: the prompt texts a mode puts into the prompt panel. */
+export interface PromptMode {
+  /** `File:name` in a folder of workbooks, else the name. */
+  id: string
+  name: string
+  file?: string
+  row: number
+  prompt: string
+  negativePrompt: string
+  characters: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
+  size?: { width: number; height: number }
+  note?: string
+}
+
+/** A row of the optional `controls` sheet: how the controls panel shows one variable. */
+export interface ControlRow {
+  variable: string
+  label: string
+  group: string
+  /** Columns offered as filters for a row() / deal() variable. Empty: every filterable column. */
+  filters: string[]
+  /** Listed under "advanced" only. */
+  hidden: boolean
+  note: string
+  /**
+   * How the control lets you choose: `pick` ticks entries, `filter` ticks values of a column, `both` offers the
+   * two (default: `both` when the variable reads rows, else `pick`).
+   */
+  input?: 'pick' | 'filter' | 'both'
+  /** Reference(s) whose rows are the entries to tick (`<acts/*[random=yes]>`); empty: the variable's own options. */
+  choices?: string
+  /** Column(s) an entry is labelled with (`act`, `key, pools`); empty: the row's key. */
+  show?: string[]
+  /** Each ticked entry gets a weight box (default yes). */
+  weights?: boolean
+  /** The control starts opened. */
+  open?: boolean
+}
+
+/** One entry a control can tick (from its `choices` reference). */
+export interface ControlChoice {
+  /** Short text shown on the entry. */
+  label: string
+  /** Reference to exactly this row: `<Sheet/key#12>`. */
+  lock: string
+  /** The row's text, for the tooltip. */
+  detail: string
+}
+
+/** One ticked entry of a control, with its relative weight. */
+export interface PinPick {
+  /** An option lock (random), a row reference `<Sheet/key#12>` or a pool `<Sheet/*[column=value]>`. */
+  lock: string
+  label: string
+  weight: number
+}
+
+/** Sheets with their keys and columns (prompt editor completion). */
+export interface WorkbookOutline {
+  sheets: { name: string; keys: string[]; columns: string[] }[]
+}
+
+/** One column of a sheet with its distinct values (controls panel filters). */
+export interface SheetColumnValues {
+  column: string
+  /** Cells are comma lists: filter with `~=`. */
+  list: boolean
+  values: { value: string; count: number }[]
+}
+
+/** Workbook check (see main/fragments/check.ts): one mode's sampled rolls. */
+export interface WorkbookCheckMode {
+  id: string
+  name: string
+  rolls: number
+  /** Rolls that would have failed the image. */
+  failed: number
+  errors: { message: string; count: number }[]
+  /** Rolls whose subject count tags (3girls, 1boy …) differ from the number of non-empty character boxes. */
+  countMismatch: number
+  countExample?: string
+  variables: { name: string; distinct: number; top: { value: string; count: number }[] }[]
+}
+
+export interface WorkbookCheckReport {
+  /** Literal references that resolve to nothing, with where they are written. */
+  missing: { place: string; reference: string }[]
+  modes: WorkbookCheckMode[]
+}
+
+/** The panels of one story (a `panels` sheet; the workbook file name is the story's name). */
+export interface StoryPanels {
+  story: string
+  /** In reading order; a panel's number is its position + 1. */
+  panels: PromptMode[]
+}
+
+/** Which story panel an image is generated for (saved under <scene folder>/story - <story>/<NNN panel>/). */
+export interface PanelTarget {
+  story: string
+  /** 1-based position of the panel. */
+  index: number
+  name: string
+}
+
+/** An image generated for a story panel. */
+export interface PanelImage {
+  id: number
+  filePath: string
+  thumbnailUrl: string
+  seed: number | null
+  favorite: boolean
+}
+
+/** A variable pinned in the pin panel: sent with every generation as `$name := lock`. */
+export interface PinnedVariable {
+  name: string
+  lock: string
+  /** What the pin shows (the value it stands for). */
+  label: string
+  /** Set by the controls panel: the ticked entries the lock was built from (so they can be shown and edited). */
+  picks?: PinPick[]
+  /** How the picks were made: entries, or values of a column. */
+  pickMode?: 'pick' | 'filter'
+}
+
+/** A fragment line or sheet row that was picked during a roll. */
+export interface RollPick {
+  /** Normalized fragment path or `sheet/key`. */
+  path: string
+  /** Fragment line number or sheet row number. */
+  row?: number
+  /** The picked text (shortened). */
+  text: string
+}
+
+export type RollPreviewResult =
+  | {
+      ok: true
+      prompt: string
+      negativePrompt: string
+      characters: { prompt: string; negativePrompt: string; center?: { x: number; y: number } }[]
+      variables: RolledVariable[]
+      picks: RollPick[]
+    }
+  | { ok: false; error: string; variables: RolledVariable[]; picks: RollPick[] }
+
 /** IPC invoke 채널 계약: 채널명 → (요청, 응답) */
+/** 외부 조각 워크북(.xlsx) 상태 — 설정 화면 표시용 */
+export interface FragmentWorkbookInfo {
+  /** 선택된 파일 경로, 없으면 null (a workbook file or a folder of workbooks) */
+  path: string | null
+  /** true when the path is a folder: every .xlsx / .xlsm in it (and its subfolders) is loaded */
+  folder?: boolean
+  /** Workbooks read successfully */
+  fileCount?: number
+  /** 읽어 들인 시트 수 */
+  sheetCount: number
+  /** 마지막 읽기 오류 (정상이면 null). 오류여도 직전 성공본은 계속 사용된다 */
+  error: string | null
+}
+
 export interface IpcInvokeMap {
   'db:status': { req: void; res: { version: number; path: string } }
   /** 앱 버전 */
@@ -556,6 +754,31 @@ export interface IpcInvokeMap {
   'frags:exportAll': { req: void; res: { count: number } }
   /** 순차 선택(<*이름>) 카운터 전체 리셋 — 다시 처음 줄부터 (NAIS2 기능) */
   'frags:resetSequential': { req: void; res: void }
+  /** 외부 조각 워크북(.xlsx): 상태 조회 / 파일 선택 / 해제. 생성 때마다 최신 내용을 다시 읽는다 */
+  'fragmentWorkbook:get': { req: void; res: FragmentWorkbookInfo }
+  'fragmentWorkbook:pick': { req: void; res: FragmentWorkbookInfo }
+  'fragmentWorkbook:clear': { req: void; res: FragmentWorkbookInfo }
+  /** Choose a folder: every workbook in it is loaded (sheets also reachable as <File:Sheet/Key>) */
+  'fragmentWorkbook:pickFolder': { req: void; res: FragmentWorkbookInfo }
+  /** Rows of every `modes` sheet in the workbook(s) */
+  'modes:list': { req: void; res: PromptMode[] }
+  /** Checks every mode of the workbook by rolling it (no generation). */
+  'workbook:check': { req: { rolls: number }; res: WorkbookCheckReport }
+  /** The workbook's `controls` sheet rows (controls panel labels, groups, filters). */
+  'workbook:controls': { req: void; res: ControlRow[] }
+  /** Sheet names, keys and columns (prompt editor completion). */
+  'workbook:outline': { req: void; res: WorkbookOutline }
+  /** Every story's panels (the `panels` sheets of the workbook folder). */
+  'panels:list': { req: void; res: StoryPanels[] }
+  /** Images generated for one panel, newest first. */
+  'panels:images': { req: PanelTarget; res: { items: PanelImage[] } }
+  /** Copies every panel's favourites (or its newest image) into a chosen folder, in panel order. */
+  'panels:export': { req: { story: string }; res: { count: number; canceled?: boolean } }
+  'panels:openFolder': { req: PanelTarget; res: void }
+  /** Distinct values per column of a sheet (controls panel filters). */
+  'workbook:columnValues': { req: { sheet: string }; res: SheetColumnValues[] }
+  /** The rows a control can tick, from its `choices` reference(s). */
+  'workbook:controlChoices': { req: { choices: string; show: string[] }; res: ControlChoice[] }
   'frags:reorder': { req: { order: CharacterOrderEntry[] }; res: void }
   'frags:folderCreate': { req: { name: string }; res: { id: number } }
   'frags:folderRename': { req: { id: number; name: string }; res: void }
@@ -568,6 +791,17 @@ export interface IpcInvokeMap {
   }
   /** 모델별 토큰 카운트 (V5=Qwen 3.5, 이전 모델=T5) */
   'tokens:count': { req: { texts: string[]; model: string }; res: { counts: number[] } }
+  /** One random roll of the prompts (fragments, sheets, variables) without generating */
+  'fragments:rollPreview': {
+    req: {
+      prompt: string
+      negativePrompt: string
+      characters: { prompt: string; negativePrompt: string }[]
+      pins?: { name: string; lock: string }[]
+      style?: StyleLayer
+    }
+    res: RollPreviewResult
+  }
   /** 히스토리 이미지를 i2i/인페인트 소스로 읽기 */
   'images:readForSource': {
     req: { filePath: string }
@@ -825,6 +1059,8 @@ export interface IpcEventMap {
   /** 씬에 새 이미지가 생성됨 (목록/상세 갱신). filePath로 카드 즉시 낙관적 갱신 */
   'scenes:changed': { sceneId: number; filePath: string }
   'scenes:reservationsChanged': Record<string, never>
+  /** An image was saved for a story panel. */
+  'panels:changed': PanelTarget
   /** 단축키로 앱 화면 배율이 바뀜 */
   'window:zoomChanged': { factor: number }
   /** 바이브 인코딩 완료 — 카드의 인코딩 표시 갱신용 */

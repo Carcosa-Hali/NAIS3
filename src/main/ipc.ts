@@ -53,8 +53,18 @@ import {
   setFragmentFolderColor,
   updateFragment
 } from './fragments/repo'
-import { processWildcards, resetSequentialCounters } from './fragments/processor'
-import { removeComments } from '../shared/nai-presets'
+import { resetSequentialCounters } from './fragments/processor'
+import { previewTexts, rollPreview } from './fragments/request'
+import { readModes, readPanels } from './fragments/modes'
+import { exportPanels, panelDir, panelImages } from './images/panels'
+import { checkWorkbook } from './fragments/check'
+import {
+  controlChoices,
+  readControls,
+  sheetColumnValues,
+  workbookOutline
+} from './fragments/controls'
+import { refreshWorkbook, WORKBOOK_SETTING, workbookStatus } from './fragments/workbook'
 import {
   addNaiAccount,
   deleteNaiAccount,
@@ -170,7 +180,7 @@ import {
   sceneDir,
   scenesRoot
 } from './images/storage'
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { basename } from 'path'
 import sharp from './sharp'
 import { verifyToken } from './nai/client'
@@ -609,6 +619,77 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   handle('frags:resetSequential', () => {
     resetSequentialCounters()
   })
+  handle('fragmentWorkbook:get', () => workbookStatus())
+  handle('fragmentWorkbook:pick', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await showOpenDialog(win, {
+      title: t('ui.chooseFragmentWorkbook'),
+      properties: ['openFile'],
+      filters: [{ name: t('ui.excelWorkbook'), extensions: ['xlsx', 'xlsm'] }]
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      setSetting(WORKBOOK_SETTING, result.filePaths[0])
+    }
+    return workbookStatus()
+  })
+  handle('fragmentWorkbook:pickFolder', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await showOpenDialog(win, {
+      title: t('ui.chooseFragmentWorkbookFolder'),
+      properties: ['openDirectory']
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      setSetting(WORKBOOK_SETTING, result.filePaths[0])
+    }
+    return workbookStatus()
+  })
+  // 모드: 워크북의 modes 시트 행 (프롬프트 패널의 모드 선택용). 매번 최신 파일을 읽는다
+  handle('modes:list', async () => readModes(await refreshWorkbook()))
+  handle('workbook:controls', async () => readControls(await refreshWorkbook()))
+  handle('workbook:outline', async () => workbookOutline(await refreshWorkbook()))
+  handle('panels:list', async () => readPanels(await refreshWorkbook()))
+  handle('panels:images', (target) => ({ items: panelImages(target) }))
+  handle('panels:openFolder', async (target) => {
+    const dir = panelDir(target)
+    mkdirSync(dir, { recursive: true })
+    await shell.openPath(dir)
+  })
+  handle('panels:export', async ({ story }) => {
+    const book = readPanels(await refreshWorkbook()).find((d) => d.story === story)
+    if (!book) return { count: 0 }
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await showOpenDialog(win, {
+      title: t('ui.panelsExportTitle'),
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return { count: 0, canceled: true }
+    return {
+      count: exportPanels(
+        story,
+        book.panels.map((p) => p.name),
+        result.filePaths[0]
+      )
+    }
+  })
+  handle('workbook:controlChoices', async ({ choices, show }) =>
+    controlChoices(await refreshWorkbook(), choices, show)
+  )
+  handle('workbook:columnValues', async ({ sheet }) =>
+    sheetColumnValues(await refreshWorkbook(), sheet)
+  )
+  handle('workbook:check', async ({ rolls }) => {
+    const sheets = await refreshWorkbook()
+    return checkWorkbook(
+      readModes(sheets),
+      fragmentSource(),
+      sheets,
+      Math.min(1000, Math.max(1, rolls))
+    )
+  })
+  handle('fragmentWorkbook:clear', () => {
+    setSetting(WORKBOOK_SETTING, '')
+    return workbookStatus()
+  })
   handle('frags:reorder', ({ order }) => {
     reorderFragments(order)
   })
@@ -630,14 +711,17 @@ export function registerIpcHandlers(ctx: { dbVersion: number; queue: GenerationQ
   handle('tokens:count', async ({ texts, model }) => {
     // 토큰 수는 실제 전송본 기준 — 조각(<이름>)·주석을 치환/제거한 결과로 센다.
     // rng 고정(항상 첫 줄)이라 결정적이고, peek이라 <*이름> 순차 카운터를 소모하지 않는다.
-    const src = fragmentSource()
-    const processed = texts.map((text) =>
-      processWildcards(removeComments(text), src, () => 0, true)
-    )
+    // 변수($Name = ...)는 한 프롬프트로 간주해 필드 간에 공유한다. 미리보기라 오류는 던지지 않는다.
+    const processed = previewTexts(texts, fragmentSource(), await refreshWorkbook())
     return {
       counts: await countPromptTokens(processed, model)
     }
   })
+
+  handle('fragments:rollPreview', async (input) =>
+    // 실제 생성과 같은 규칙으로 한 번 굴려 본다 (오류는 결과로 반환, <*이름> 순차 카운터는 소모하지 않음)
+    rollPreview(input, fragmentSource(), await refreshWorkbook())
+  )
 
   handle('images:showInFolder', ({ filePath }) => {
     if (isUnderImagesRoot(filePath)) shell.showItemInFolder(filePath)
