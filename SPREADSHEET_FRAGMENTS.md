@@ -264,7 +264,7 @@ or cell), so you can pin some variables without editing the workbook. Fixing the
 A sheet named **modes** (in any workbook; in a folder, every file may have its own) holds named sets of prompt
 texts. One row per mode:
 
-| mode         | main                       | main_neg | char_1          | char_1_neg | char_1_pos | … char_6 / char_6_neg / char_6_pos | size       | note              |
+| mode         | main                       | main_neg | char_1          | char_1_neg | char_1_pos | … char_N / char_N_neg / char_N_pos | size       | note              |
 | ------------ | -------------------------- | -------- | --------------- | ---------- | ---------- | ---------------------------------- | ---------- | ----------------- |
 | random scene | `$loc = row(<places/**>)`… | …        | `<chars/one>` … | …          | `0.3, 0.6` |                                    | `1216x832` | shown in the list |
 
@@ -277,7 +277,8 @@ Optional columns:
 - **hidden**: `1` / `yes` keeps the row out of the mode list, for a base that other modes extend.
 
 The **mode bar** under the prompt preset bar lists every mode (grouped by file in a folder). Picking one fills
-the main prompt, the main negative and one character prompt per non-empty `char_N` cell, sets the size when the
+the main prompt, the main negative and one character prompt per non-empty `char_N` cell (as many as the
+selected model takes: 6 before V5, more on V5; boxes that come out empty are not sent), sets the size when the
 `size` cell holds one (`832x1216`), and sets character positions from `char_N_pos` (`x, y` between 0 and 1). The
 cells are copied as written, so they use the same syntax as the prompt boxes. Character prompts go into cards in
 a **Mode slots** folder of the character list; the cards are reused, and every other character is turned off.

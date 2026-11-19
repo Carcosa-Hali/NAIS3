@@ -1,7 +1,7 @@
 /**
  * Modes: named sets of prompt texts kept on a sheet called `modes` (in any workbook of the folder).
  *
- *   mode | main | main_neg | char_1 | char_1_neg | char_1_pos | ... | char_6 | char_6_neg | char_6_pos | size | note
+ *   mode | main | main_neg | char_1 | char_1_neg | char_1_pos | ... | char_N | char_N_neg | char_N_pos | size | note
  *
  * One row per mode. Picking a mode in the prompt panel fills the main prompt, the main negative and one character
  * box per non-empty char_N (positions from char_N_pos as "x, y" between 0 and 1, size as "832x1216").
@@ -15,7 +15,8 @@ import type { StoryPanels, PromptMode } from '../../shared/types'
 import type { SpreadsheetSource } from './spreadsheet'
 
 export const MODES_SHEET = 'modes'
-export const MAX_MODE_CHARACTERS = 6
+/** Highest char_N column read (V5 takes up to 32 character prompts; the app sends what the model allows). */
+export const MAX_MODE_CHARACTERS = 32
 
 function position(text: string | undefined): { x: number; y: number } | undefined {
   const match = /^\s*(\d*\.?\d+)\s*[,;\s]\s*(\d*\.?\d+)\s*$/.exec(text ?? '')

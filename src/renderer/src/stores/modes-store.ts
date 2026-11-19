@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { PromptMode } from '@shared/types'
+import { modelCapabilities } from '@shared/nai-models'
 import { t } from '../lib/i18n'
 import { useCharactersStore } from './characters-store'
 import { useGenerationStore } from './generation-store'
@@ -43,8 +44,12 @@ export async function applyPromptRow(mode: PromptMode): Promise<void> {
   })
   await useCharactersStore
     .getState()
-    .applyModeCharacters(mode.characters, t('ui.modeSlotsFolder'), (index) =>
-      t('ui.modeSlotValue', index + 1)
+    .applyModeCharacters(
+      mode.characters,
+      t('ui.modeSlotsFolder'),
+      (index) => t('ui.modeSlotValue', index + 1),
+      // as many boxes as the selected model takes (V5: more than six)
+      modelCapabilities(useGenerationStore.getState().request.model).maxCharacters
     )
 }
 
